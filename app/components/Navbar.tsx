@@ -2,6 +2,11 @@
 
 import Link from 'next/link';
 import WalletConnector from './WalletConnector';
+import { useEffect, useState } from 'react';
+import { WalletConnect } from '../lib/WalletConnect';
+
+// Use the same singleton instance
+const walletConnect = new WalletConnect();
 
 export default function Navbar() {
     return (
@@ -15,16 +20,7 @@ export default function Navbar() {
                         </Link>
                     </div>
 
-                    {/* Action Buttons */}
-                    <div className="ml-auto flex items-center space-x-4">
-                        <button 
-                            className="text-gray-600 hover:text-gray-900 px-4 py-2 text-sm font-medium"
-                            onClick={() => {/* TODO: Implement create modal */}}
-                        >
-                            Create Stream
-                        </button>
-                        <WalletConnector />
-                    </div>
+                    <WalletConnector />
                 </div>
             </div>
         </nav>
