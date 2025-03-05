@@ -1,7 +1,9 @@
+import WalletConnector from './components/WalletConnector';
+
 export default function Home() {
   return (
-    <div className="text-center text-2xl text-gray-700">
-      Page Dashboard
-    </div>
+    <main className="flex min-h-screen flex-col items-center justify-center p-24">
+      <h1 className="text-xl">Streaming UI</h1>
+    </main>
   );
 }

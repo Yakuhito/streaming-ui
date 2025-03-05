@@ -2,13 +2,12 @@ import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 import "./globals.css";
 import Navbar from "./components/Navbar";
-import Footer from "./components/Footer";
 
 const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "Streaming Dashboard",
-  description: "A dashboard for managing streaming payments",
+  title: "Streaming UI",
+  description: "Easily view, create, and manage CAT streams on Chia",
 };
 
 export default function RootLayout({
@@ -18,12 +17,11 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <body className={`${inter.className} min-h-screen flex flex-col`}>
+      <body className={inter.className}>
         <Navbar />
-        <main className="flex-grow container mx-auto px-4 py-8">
+        <div className="pt-16">
           {children}
-        </main>
-        <Footer />
+        </div>
       </body>
     </html>
   );
