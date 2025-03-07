@@ -6,7 +6,8 @@ interface ModalProps {
 }
 
 export default function Modal({ isOpen, onClose, children, title }: ModalProps) {
-  if (!isOpen) return null;
+  console.log('Modal render attempt - isOpen:', isOpen);
+  if (!isOpen) return <></>;
 
   return (
     <>

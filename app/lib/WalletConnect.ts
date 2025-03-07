@@ -1,18 +1,14 @@
 import SignClient from "@walletconnect/sign-client";
 import { SessionTypes } from "@walletconnect/types";
 import { toast } from 'react-hot-toast';
+import { store } from '../redux/store';
+import { initialize, generateQrCode, disconnect } from '../redux/walletSlice';
 
 export class WalletConnect {
   private client: SignClient | undefined;
-  private session: SessionTypes.Struct | undefined;
-  private topic: string | undefined;
-  private address: string | undefined;
-  private onConnectionChange: ((isConnected: boolean, address?: string) => void)[] = [];
   private initPromise: Promise<void>;
-  private isInitialized: boolean = false;
 
   constructor() {
-    // Initialize asynchronously and store the promise
     this.initPromise = this.init();
   }
 
@@ -20,14 +16,13 @@ export class WalletConnect {
     try {
       await this.initClient();
       await this.restorePreviousSession();
-      this.isInitialized = true;
+      store.dispatch(initialize({}));
     } catch (error) {
       console.error("Failed to initialize WalletConnect:", error);
-      this.isInitialized = true; // Still mark as initialized even if there's an error
+      store.dispatch(initialize({}));
     }
   }
 
-  // Wait for initialization to complete
   public async waitForInit(): Promise<void> {
     await this.initPromise;
   }
@@ -40,35 +35,25 @@ export class WalletConnect {
       for (const session of sessions) {
         try {
           if (this.client.session.keys.includes(session.topic)) {
-            this.session = session;
-            this.topic = session.topic;
-            const address = await this.getAddress();
+            const address = await this.getAddressFromSession(session);
             if (address) {
               this.setupEventListeners();
-              this.notifyConnectionChange(true, address);
+              store.dispatch(initialize({ session, address }));
               console.log({msg: "Session restored successfully", address});
-              return; // Successfully restored a session
+              return;
             }
           }
         } catch (e) {
           console.warn("Failed to restore specific session:", e);
-          // Continue to next session
         }
       }
       
       // If we get here, no valid session was found
-      this.clearState();
+      store.dispatch(initialize({}));
     } catch (error) {
       console.error("Failed to restore session:", error);
-      this.clearState();
+      store.dispatch(initialize({}));
     }
-  }
-
-  private clearState() {
-    this.session = undefined;
-    this.topic = undefined;
-    this.address = undefined;
-    this.notifyConnectionChange(false);
   }
 
   private async initClient(): Promise<SignClient | undefined> {
@@ -96,54 +81,33 @@ export class WalletConnect {
 
   private setupEventListeners() {
     if (!this.client) return;
-    // Add listeners
     this.client.on("session_delete", this.handleSessionDelete);
     this.client.on("session_expire", this.handleSessionExpire);
     this.client.on("session_update", this.handleSessionUpdate);
   }
 
   private handleSessionDelete = () => {
-    this.disconnect();
+    this.disconnectWallet();
   };
 
   private handleSessionExpire = () => {
-    this.disconnect();
+    this.disconnectWallet();
   };
 
   private handleSessionUpdate = async () => {
-    // Refresh the address when session is updated
-    if (this.topic) {
-      const address = await this.getAddress();
-      this.notifyConnectionChange(!!address, address);
+    const state = store.getState();
+    if (state.wallet.session?.topic) {
+      const address = await this.getAddressFromSession(state.wallet.session);
+      if (address) {
+        store.dispatch(initialize({ session: state.wallet.session, address }));
+      }
     }
   };
 
-  public onConnect(callback: (isConnected: boolean, address?: string) => void) {
-    this.onConnectionChange.push(callback);
-    // Call immediately with current state if initialized
-    if (this.isInitialized) {
-      callback(this.isConnected(), this.address);
-    }
-    return () => {
-      this.onConnectionChange = this.onConnectionChange.filter(cb => cb !== callback);
-    };
-  }
-
-  private notifyConnectionChange(isConnected: boolean, address?: string) {
-    this.address = address;
-    console.log({ func: "notifyConnectionChange", address, isConnected })
-    this.onConnectionChange.forEach(callback => callback(isConnected, address));
-  }
-
-  async connect(): Promise<{success: boolean, uri?: string}> {
+  async connectWallet(): Promise<boolean> {
     try {
       const client = await this.initClient();
-      if (!client) return { success: false };
-
-      // If already connected, disconnect first
-      if (this.isConnected()) {
-        await this.disconnect();
-      }
+      if (!client) return false;
 
       const namespaces = {
         chia: {
@@ -156,63 +120,41 @@ export class WalletConnect {
       const { uri, approval } = await client.connect({
         requiredNamespaces: namespaces,
       });
-
       if (!uri) {
-        return { success: false };
+        console.log("no uri :(")
+        return false;
       }
 
-      // Return the URI immediately so the QR code can be shown
-      const result = { success: true, uri };
+      store.dispatch(generateQrCode(uri));
 
-      // Handle the approval in the background
-      approval().then(async (session) => {
-        this.session = session;
-        this.topic = session.topic;
-        
-        const address = await this.getAddress();
-        this.notifyConnectionChange(true, address);
-        toast.success('Connected to wallet!');
-      }).catch((error) => {
+      try {
+        const session = await approval();
+        const address = await this.getAddressFromSession(session);
+        if (address) {
+          store.dispatch(initialize({ session, address }));
+          toast.success('Connected to wallet!');
+          return true;
+        }
+      } catch (error) {
         console.error("Connection approval failed:", error);
         toast.error('Failed to connect wallet');
-        this.clearState();
-      });
+        store.dispatch(disconnect());
+      }
 
-      return result;
+      return false;
     } catch (error: any) {
       console.error("Connection failed:", error);
       toast.error('Failed to connect wallet');
-      return { success: false };
+      return false;
     }
   }
 
-  async disconnect() {
-    if (this.client && this.topic) {
-      try {
-        await this.client.disconnect({
-          topic: this.topic,
-          reason: {
-            code: 6000,
-            message: "User disconnected.",
-          },
-        });
-      } catch (e) {
-        console.error("Error disconnecting:", e);
-      }
-    }
-
-    this.clearState();
-    toast.success('Disconnected from wallet');
-  }
-
-  async getAddress(): Promise<string | undefined> {
-    if (!this.client || !this.topic) {
-      return undefined;
-    }
+  private async getAddressFromSession(session: SessionTypes.Struct): Promise<string | undefined> {
+    if (!this.client) return undefined;
 
     try {
       const response = await this.client.request<{address: string}>({
-        topic: this.topic,
+        topic: session.topic,
         chainId: "chia:mainnet",
         request: {
           method: "chia_getAddress",
@@ -227,11 +169,31 @@ export class WalletConnect {
     }
   }
 
+  async disconnectWallet() {
+    const state = store.getState();
+    if (this.client && state.wallet.session?.topic) {
+      try {
+        await this.client.disconnect({
+          topic: state.wallet.session.topic,
+          reason: {
+            code: 6000,
+            message: "User disconnected.",
+          },
+        });
+      } catch (e) {
+        console.error("Error disconnecting:", e);
+      }
+    }
+
+    store.dispatch(disconnect());
+    toast.success('Disconnected from wallet');
+  }
+
   isConnected(): boolean {
-    return !!this.session && !!this.topic;
+    return !!store.getState().wallet.address;
   }
 
   getActiveAddress(): string | undefined {
-    return this.address;
+    return store.getState().wallet.address;
   }
 } 
