@@ -3,10 +3,10 @@
 import Link from 'next/link';
 import WalletConnector from './WalletConnector';
 import { useEffect, useState } from 'react';
-import { WalletConnect } from '../lib/WalletConnect';
+import { walletConnect } from '../lib/walletConnectInstance';
 
-// Use the same singleton instance
-const walletConnect = new WalletConnect();
+// Remove the WalletConnect instance creation
+// const walletConnect = new WalletConnect();
 
 export default function Navbar() {
     return (

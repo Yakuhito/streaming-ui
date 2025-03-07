@@ -2,9 +2,8 @@ import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 import "./globals.css";
 import Navbar from "./components/Navbar";
-import { Provider } from 'react-redux';
-import { store } from './redux/store';
 import StoreProvider from "./StoreProvider";
+import WalletInitializer from "./components/WalletInitializer";
 
 const inter = Inter({ subsets: ["latin"] });
 
@@ -22,6 +21,7 @@ export default function RootLayout({
     <html lang="en">
       <body className={inter.className}>
         <StoreProvider>
+          <WalletInitializer />
           <Navbar />
           <div className="pt-16">
             {children}

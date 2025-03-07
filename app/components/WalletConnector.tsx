@@ -3,24 +3,16 @@
 import { useEffect, useState } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
 import { Toaster, toast } from 'react-hot-toast';
-import { WalletConnect } from '../lib/WalletConnect';
 import Modal from './Modal';
 import { useAppSelector } from '../redux/hooks';
 import { disconnect } from '../redux/walletSlice';
 import { store } from '../redux/store';
-
-// Create a singleton instance of WalletConnect
-const walletConnect = new WalletConnect();
+import { walletConnect } from '../lib/walletConnectInstance';
 
 export default function WalletConnector() {
   const { address, isInitialized, qrUri } = useAppSelector(state => state.wallet);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isCopied, setIsCopied] = useState(false);
-
-  useEffect(() => {
-    // Ensure WalletConnect is initialized and previous session is restored
-    walletConnect.waitForInit();
-  }, []);
 
   const handleModalClose = () => {
     setIsModalOpen(false);

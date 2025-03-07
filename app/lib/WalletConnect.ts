@@ -16,7 +16,6 @@ export class WalletConnect {
     try {
       await this.initClient();
       await this.restorePreviousSession();
-      store.dispatch(initialize({}));
     } catch (error) {
       console.error("Failed to initialize WalletConnect:", error);
       store.dispatch(initialize({}));
@@ -28,19 +27,34 @@ export class WalletConnect {
   }
 
   private async restorePreviousSession() {
-    if (!this.client) return;
+    if (!this.client) {
+      console.log("No WalletConnect client available during session restoration");
+      store.dispatch(initialize({}));
+      return;
+    }
 
     try {
       const sessions = this.client.session.getAll();
+      console.log("Found existing sessions:", sessions.length);
+      
       for (const session of sessions) {
         try {
+          console.log("Checking session:", {
+            topic: session.topic,
+            isKeyIncluded: this.client.session.keys.includes(session.topic)
+          });
+          
           if (this.client.session.keys.includes(session.topic)) {
+            console.log("Valid session found, attempting to get address");
             const address = await this.getAddressFromSession(session);
+            console.log({ restored_address: address })
             if (address) {
               this.setupEventListeners();
               store.dispatch(initialize({ session, address }));
-              console.log({msg: "Session restored successfully", address});
+              console.log({msg: "Session restored successfully", address, topic: session.topic});
               return;
+            } else {
+              console.log("Failed to get address from session");
             }
           }
         } catch (e) {
@@ -49,6 +63,7 @@ export class WalletConnect {
       }
       
       // If we get here, no valid session was found
+      console.log("No valid sessions found during restoration");
       store.dispatch(initialize({}));
     } catch (error) {
       console.error("Failed to restore session:", error);
@@ -153,6 +168,7 @@ export class WalletConnect {
     if (!this.client) return undefined;
 
     try {
+      console.log("Requesting address for session:", session.topic);
       const response = await this.client.request<{address: string}>({
         topic: session.topic,
         chainId: "chia:mainnet",
@@ -162,6 +178,7 @@ export class WalletConnect {
         },
       });
 
+      console.log("Got address response:", response);
       return response.address;
     } catch (error: any) {
       console.error("Failed to get address:", error);
