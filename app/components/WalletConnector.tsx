@@ -6,6 +6,8 @@ import { Toaster, toast } from 'react-hot-toast';
 import { WalletConnect } from '../lib/WalletConnect';
 import Modal from './Modal';
 import { useAppSelector } from '../redux/hooks';
+import { disconnect } from '../redux/walletSlice';
+import { store } from '../redux/store';
 
 // Create a singleton instance of WalletConnect
 const walletConnect = new WalletConnect();
@@ -16,8 +18,15 @@ export default function WalletConnector() {
   const [isCopied, setIsCopied] = useState(false);
 
   useEffect(() => {
+    // Ensure WalletConnect is initialized and previous session is restored
     walletConnect.waitForInit();
   }, []);
+
+  const handleModalClose = () => {
+    setIsModalOpen(false);
+    // Clear the QR code from Redux state when modal is closed
+    store.dispatch(disconnect());
+  };
 
   const handleConnect = async () => {
     console.log('Connect button clicked, setting modal to open');
@@ -73,7 +82,7 @@ export default function WalletConnector() {
 
       <Modal
         isOpen={isModalOpen}
-        onClose={() => setIsModalOpen(false)}
+        onClose={handleModalClose}
         title="Connect Sage Wallet"
       >
         <div className="flex flex-col items-center gap-4">
