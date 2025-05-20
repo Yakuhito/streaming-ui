@@ -75,7 +75,7 @@ export default function StreamPage() {
   }, [streamData]);
 
   return (
-    <main className="flex max-w-7xl flex-col m-auto pt-8 px-8">
+    <main className="flex max-w-7xl flex-col m-auto pt-8 px-8 bg-white">
       <div className="flex items-center gap-4 mb-8">
         <h1 className="text-2xl font-semibold xl:hidden">{truncatedId}</h1>
         <h1 className="text-2xl font-semibold xl:block hidden">{streamIdString}</h1>
@@ -218,7 +218,7 @@ function StreamInfo({ parsedStreams }: { parsedStreams: [number, StreamedCatPars
             </div>
 
             <h2 className="text-xl font-semibold mt-8">Transactions</h2>
-            <ul className="list-disc pl-5 space-y-2"> { parsedStreams.map(([spentBlockHeight, parseResult], index) => {
+            <ul className="list-disc pl-5 space-y-2 pb-32"> { parsedStreams.map(([spentBlockHeight, parseResult], index) => {
                 if (spentBlockHeight === 0) {
                     return (
                         <li key={spentBlockHeight}>
