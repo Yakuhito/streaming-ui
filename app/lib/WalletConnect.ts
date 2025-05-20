@@ -126,7 +126,7 @@ export class WalletConnect {
 
       const namespaces = {
         chia: {
-          methods: ['chia_getAddress', 'chia_send'],
+          methods: ['chia_getAddress', 'chia_send', 'chip0002_getPublicKeys', 'chip0002_signCoinSpends', 'chip0002_sendTransaction'],
           chains: ["chia:mainnet"],
           events: [],
         },
@@ -192,7 +192,7 @@ export class WalletConnect {
     const state = store.getState();
 
     try {
-      const response = await this.client.request<{address: string}>({
+      const response = await this.client.request<{}>({
         topic: state.wallet.session?.topic ?? '',
         chainId: "chia:mainnet",
         request: {
@@ -213,6 +213,32 @@ export class WalletConnect {
     } catch (error: any) {
       console.error("Failed to send cat:", error);
       return false;
+    }
+  }
+
+  async getPublicKeys(limit: number, offset: number): Promise<string[] | undefined> {
+    if (!this.client) return undefined;
+
+    const state = store.getState();
+
+    try {
+      const response = await this.client.request<string[]>({
+        topic: state.wallet.session?.topic ?? '',
+        chainId: "chia:mainnet",
+        request: {
+          method: "chip0002_getPublicKeys",
+          params: {
+            limit, offset
+          },
+        },
+      });
+
+      console.log({ response });
+
+      return response;
+    } catch (error: any) {
+      console.error("Failed to send cat:", error);
+      return undefined;
     }
   }
 

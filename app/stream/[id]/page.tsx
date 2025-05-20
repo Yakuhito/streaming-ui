@@ -1,6 +1,8 @@
 'use client';
 
-import { Address, Clvm, CoinsetClient, Puzzle, StreamedCatParsingResult } from 'chia-wallet-sdk-wasm';
+import walletConnect from '@/app/lib/walletConnectInstance';
+import { useAppSelector } from '@/app/redux/hooks';
+import { Address, Clvm, CoinsetClient, PublicKey, Puzzle, standardPuzzleHash, StreamedCatParsingResult } from 'chia-wallet-sdk-wasm';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { useEffect, useState } from 'react';
@@ -206,7 +208,7 @@ function StreamInfo({ parsedStreams }: { parsedStreams: [number, StreamedCatPars
                         <tr>
                             <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-500 border-r border-gray-200 w-1/4">Last Claim</td>
                             <td className="px-6 py-4 text-sm text-gray-900 w-3/4">
-                                {formatDate(lastStreamInfo?.lastPaymentTime ?? BigInt(0))}
+                                {formatDate(lastStreamInfo?.lastPaymentTime ?? BigInt(0))} {!lastStream[1].lastSpendWasClawback ? <ClaimButton lastParsedStream={lastStream[1]} /> : ''}
                             </td>
                         </tr>
                         <tr>
@@ -340,3 +342,48 @@ function Coin({ coinId }: { coinId: Uint8Array }) {
             <span>Coin <Link href={`https://www.spacescan.io/coin/0x${hexId}`} className="text-blue-500 hover:text-blue-600 underline" target="_blank">0x{truncatedId}</Link>{' '}</span>
     )
 }
+
+function ClaimButton({ lastParsedStream }: { lastParsedStream: StreamedCatParsingResult }) {
+    const { address } = useAppSelector(state => state.wallet);
+    const [buttonText, setButtonText] = useState("Claim");
+
+    const handleClaim = async () => {
+        setButtonText("Searching for public key...");
+        const clawbackAddress = new Address(lastParsedStream.streamedCat!.info.clawbackPh!, 'xch').encode();
+
+        let startIndex = 0;
+        let publicKey: PublicKey | null = null;
+        while (!publicKey && startIndex < 10000) {
+            const keys = await walletConnect.getPublicKeys(500,startIndex);
+            if (!keys) {
+                break;
+            }
+            
+            for (const key of keys) {
+                if(new Address(standardPuzzleHash(PublicKey.fromBytes(Buffer.from(key, 'hex'))), 'xch').encode() === clawbackAddress) {
+                    publicKey = PublicKey.fromBytes(Buffer.from(key, 'hex'));
+                    break;
+                }
+            }
+
+            startIndex += 500;
+        }
+
+        if (publicKey === null) {
+            alert("Could not find public key associated with clawback puzzle hash in the connected wallet");
+            return;
+        }
+
+        setButtonText("Searching for source coin...");
+    }
+
+    const disabled = buttonText !== "Claim";
+    
+    return address && <button
+        onClick={handleClaim}
+        className={`ml-2 px-2 py-1 font-normal text-white rounded-lg transition-colors ${disabled ? "bg-blue-300" : "bg-blue-500 hover:bg-blue-600"}`}
+        disabled={disabled}
+    >
+        {buttonText}
+    </button>;
+    }
