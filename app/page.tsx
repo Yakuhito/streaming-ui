@@ -62,7 +62,7 @@ export default function Home() {
   };
 
   return (
-    <main className="flex max-w-7xl flex-col justify-center m-auto red-300 pt-8 px-8">
+    <main className="flex max-w-7xl flex-col justify-center m-auto pt-8 px-8 bg-white text-black">
       <h1 className="text-xl mb-4">View Stream</h1>
       <div className="flex gap-2 w-full max-w-2xl m-auto">
         <input

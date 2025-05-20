@@ -75,7 +75,7 @@ export default function StreamPage() {
   }, [streamData]);
 
   return (
-    <main className="flex max-w-7xl flex-col m-auto pt-8 px-8 bg-white">
+    <main className="flex max-w-7xl flex-col m-auto pt-8 px-8 bg-white text-black">
       <div className="flex items-center gap-4 mb-8">
         <h1 className="text-2xl font-semibold xl:hidden">{truncatedId}</h1>
         <h1 className="text-2xl font-semibold xl:block hidden">{streamIdString}</h1>
