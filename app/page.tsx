@@ -1,7 +1,50 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
+
+function RecentStreams() {
+  const [recentStreams, setRecentStreams] = useState<string[]>([]);
+
+  useEffect(() => {
+    const savedStreams = JSON.parse(localStorage.getItem('savedStreams') || '[]');
+    setRecentStreams(savedStreams.slice(-50).reverse()); // Get last 50 and reverse for most recent first
+  }, []);
+
+  const handleDelete = (streamId: string) => {
+    const savedStreams = JSON.parse(localStorage.getItem('savedStreams') || '[]');
+    const updatedStreams = savedStreams.filter((id: string) => id !== streamId);
+    localStorage.setItem('savedStreams', JSON.stringify(updatedStreams));
+    setRecentStreams(updatedStreams.slice(-50).reverse());
+  };
+
+  if (recentStreams.length === 0) {
+    return <div className="text-gray-600 text-center">No history found</div>;
+  }
+
+  return (
+    <ul className="space-y-2 list-disc pl-5">
+      {recentStreams.map((streamId) => (
+        <li key={streamId} className="items-center">
+          <Link
+            href={`/stream/${streamId}`}
+            className="text-blue-500 hover:text-blue-600 hover:underline"
+          >
+            <span className="hidden lg:inline">{streamId}</span>
+            <span className="lg:hidden">{`${streamId.slice(0, 10)}...${streamId.slice(-3)}`}</span>
+          </Link>
+          <button
+            onClick={() => handleDelete(streamId)}
+            className="text-red-500 hover:text-red-600 text-lg font-bold ml-2"
+          >
+            ×
+          </button>
+        </li>
+      ))}
+    </ul>
+  );
+}
 
 export default function Home() {
   const [searchInput, setSearchInput] = useState('');
@@ -17,6 +60,7 @@ export default function Home() {
       router.push(`/stream/${value}`);
     }
   };
+
   return (
     <main className="flex max-w-7xl flex-col justify-center m-auto red-300 pt-8 px-8">
       <h1 className="text-xl mb-4">View Stream</h1>
@@ -38,7 +82,7 @@ export default function Home() {
         </button>
       </div>
       <h1 className="text-xl mt-8 mb-4">Recent Streams</h1>
-      TODO
+      <RecentStreams />
       <h1 className="text-xl mt-8 mb-4">New Stream</h1>
       TODO
     </main>
