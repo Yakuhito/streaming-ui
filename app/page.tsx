@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import NewStreamForm from './components/NewStreamForm';
 
 function RecentStreams() {
   const [recentStreams, setRecentStreams] = useState<string[]>([]);
@@ -84,7 +85,12 @@ export default function Home() {
       <h1 className="text-xl mt-8 mb-4">Recent Streams</h1>
       <RecentStreams />
       <h1 className="text-xl mt-8 mb-4">New Stream</h1>
-      TODO
+      <div className="flex justify-center w-full">
+        <NewStreamForm />
+      </div>
+      <div className="mt-8 text-center text-sm text-gray-500 pb-8">
+        <p>⚠️ Experimental site - use at own risk. Made with 💚 by a yak.</p>
+      </div>
     </main>
   );
 }

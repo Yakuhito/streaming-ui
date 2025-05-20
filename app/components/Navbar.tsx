@@ -2,9 +2,6 @@
 
 import Link from 'next/link';
 import WalletConnector from './WalletConnector';
-import { useEffect, useState } from 'react';
-import { walletConnect } from '../lib/walletConnectInstance';
-
 // Remove the WalletConnect instance creation
 // const walletConnect = new WalletConnect();
 
