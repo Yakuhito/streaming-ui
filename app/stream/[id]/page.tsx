@@ -288,14 +288,14 @@ function ProgressBar({
 
     return (
         <div className="space-y-2 xl:m-8 md:m-4">
-            <div className="h-4 bg-gray-200 rounded-full overflow-hidden">
+            <div className="h-4 bg-gray-200 rounded-full overflow-hidden relative">
                 <div className="h-full flex w-full">
                     <div 
                         className="bg-blue-600 transition-all duration-1000 flex-shrink-0"
                         style={{ width: `${claimedPercentage}%` }}
                     />
                     <div 
-                        className="bg-blue-400 transition-all duration-1000 flex-shrink-0"
+                        className="bg-blue-400 animate-color-shift transition-all duration-1000 flex-shrink-0 relative overflow-hidden"
                         style={{ width: `${claimablePercentage}%` }}
                     />
                     <div 
@@ -312,7 +312,7 @@ function ProgressBar({
                     </div>
                     {!clawback ? (
                         <div className="flex items-center gap-2">
-                            <div className="w-3 h-3 bg-blue-400 rounded-sm flex-shrink-0"></div>
+                            <div className="w-3 h-3 bg-blue-400 animate-color-shift rounded-sm flex-shrink-0"></div>
                             <span className="whitespace-nowrap">Claimable (<FixedWidthNumber value={claimableAmount} />)</span>
                         </div>
                     ) : (
