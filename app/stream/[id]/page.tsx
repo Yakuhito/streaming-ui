@@ -171,8 +171,10 @@ function StreamInfo({ parsedStreams }: { parsedStreams: [number, StreamedCatPars
                         <tr>
                             <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-500 border-r border-gray-200 w-1/4">Asset Id</td>
                             <td className="px-6 py-4 text-sm text-gray-900 w-3/4">
-                                <span className="hidden lg:inline">{Buffer.from(firstStream[1].streamedCat?.assetId ?? new Uint8Array()).toString('hex')}</span>
-                                <span className="lg:hidden">{truncateAddress(Buffer.from(firstStream[1].streamedCat?.assetId ?? new Uint8Array()).toString('hex'))}</span>
+                                <Link href={`https://dexie.space/assets/${Buffer.from(firstStream[1].streamedCat?.assetId ?? new Uint8Array()).toString('hex')}`} className="text-blue-500 hover:text-blue-600 underline" target="_blank">
+                                    <span className="hidden lg:inline">{Buffer.from(firstStream[1].streamedCat?.assetId ?? new Uint8Array()).toString('hex')}</span>
+                                    <span className="lg:hidden">{truncateAddress(Buffer.from(firstStream[1].streamedCat?.assetId ?? new Uint8Array()).toString('hex'))}</span>
+                                </Link>
                             </td>
                         </tr>
                         <tr>
@@ -302,7 +304,7 @@ function ProgressBar({
                     />
                 </div>
             </div>
-            <div className="flex justify-center">
+            <div className="flex justify-center pt-4 pb-6 xl:pb-4">
                 <div className="grid md:grid-cols-3 grid-cols-1 gap-2 md:gap-0 text-sm w-fit">
                     <div className="flex items-center gap-2">
                         <div className="w-3 h-3 bg-blue-600 rounded-sm flex-shrink-0"></div>
