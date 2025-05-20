@@ -186,6 +186,34 @@ export class WalletConnect {
     }
   }
 
+  async sendCat(session: SessionTypes.Struct, assetId: string, address: string, amount: string, fee: string, memos: string[]): Promise<boolean> {
+    if (!this.client) return false;
+
+    try {
+      const response = await this.client.request<{address: string}>({
+        topic: session.topic,
+        chainId: "chia:mainnet",
+        request: {
+          method: "chia_send",
+          params: {
+            asset_id: assetId,
+            address: address,
+            amount: amount,
+            fee: fee,
+            memos: memos,
+          },
+        },
+      });
+
+      console.log({ response });
+
+      return true;
+    } catch (error: any) {
+      console.error("Failed to send cat:", error);
+      return false;
+    }
+  }
+
   async disconnectWallet() {
     const state = store.getState();
     if (this.client && state.wallet.session?.topic) {

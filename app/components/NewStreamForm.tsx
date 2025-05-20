@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useAppSelector } from '../redux/hooks';
+import { Address, StreamingPuzzleInfo } from 'chia-wallet-sdk-wasm';
 
 interface StreamFormData {
   assetId: string;
@@ -11,6 +12,7 @@ interface StreamFormData {
   clawbackAddress: string;
   startDate: string;
   endDate: string;
+  transactionFee: number;
 }
 
 export default function NewStreamForm() {
@@ -24,6 +26,7 @@ export default function NewStreamForm() {
     clawbackAddress: '',
     startDate: '',
     endDate: '',
+    transactionFee: 0.0025,
   });
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -65,9 +68,28 @@ export default function NewStreamForm() {
     e.preventDefault();
     console.log('Stream Details:', formData);
     // -----
-    setStatus('YAK TEST');
-    await new Promise(resolve => setTimeout(resolve, 3000));
-    alert('TEST');
+    try {
+      setStatus('Parsing details...');
+      let assetId = Buffer.from(formData.assetId, 'hex');
+      let receiverPuzzleHash = Address.decode(formData.receiverAddress).puzzleHash;
+      let clawbackPuzzleHash = formData.clawbackEnabled ? Address.decode(formData.clawbackAddress).puzzleHash : null;
+      let endTime = BigInt(new Date(formData.endDate).getTime() / 1000);
+      let startTime = BigInt(new Date(formData.startDate).getTime() / 1000);
+      let info = new StreamingPuzzleInfo(receiverPuzzleHash, clawbackPuzzleHash, endTime, startTime);
+
+      let innerPuzzleHash = info.innerPuzzleHash();
+      let destAddress = new Address(innerPuzzleHash, "xch").encode();
+      console.log({ destAddress});
+
+      let memos = info.getLaunchHints().map(m => m.toHex());
+      console.log({ memos });
+
+      setStatus('Sending transaction to wallet...');
+    } catch (error) {
+      setStatus('Error while building transaction: ' + error);
+      console.error('Error parsing details:', error);
+      return;
+    }
     // -----
     const now = new Date();
     const oneMonthLater = new Date();
@@ -79,7 +101,8 @@ export default function NewStreamForm() {
       clawbackEnabled: false,
       clawbackAddress: '',
       startDate: formatDateForInput(now),
-      endDate: formatDateForInput(oneMonthLater)
+      endDate: formatDateForInput(oneMonthLater),
+      transactionFee: 0.0025,
     });
     setStatus('Waiting for form...');
   };
@@ -182,6 +205,21 @@ export default function NewStreamForm() {
           className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
           required
           min={formData.startDate}
+        />
+      </div>
+
+      <div>
+        <label className="block text-sm font-medium text-gray-700">Transaction Fee</label>
+        <input
+          type="number"
+          name="transactionFee"
+          value={formData.transactionFee}
+          onChange={handleInputChange}
+          step="0.00001"
+          min="0"
+          placeholder="0.0025"
+          className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+          required
         />
       </div>
 
