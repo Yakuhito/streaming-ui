@@ -220,7 +220,7 @@ function StreamInfo({ parsedStreams }: { parsedStreams: [number, StreamedCatPars
             </div>
 
             <h2 className="text-xl font-semibold mt-8">Transactions</h2>
-            <ul className="list-disc pl-5 space-y-2 pb-32"> { parsedStreams.map(([spentBlockHeight, parseResult], index) => {
+            <ul className="list-disc pl-5 space-y-2 pb-8"> { parsedStreams.map(([spentBlockHeight, parseResult], index) => {
                 if (spentBlockHeight === 0) {
                     return (
                         <li key={spentBlockHeight}>
