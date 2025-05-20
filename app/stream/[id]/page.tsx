@@ -202,7 +202,7 @@ function StreamInfo({ parsedStreams }: { parsedStreams: [number, StreamedCatPars
                             </td>
                         </tr>
                         <tr>
-                            <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-500 border-r border-gray-200 w-1/4">Last Claim Time</td>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-500 border-r border-gray-200 w-1/4">Last Claim</td>
                             <td className="px-6 py-4 text-sm text-gray-900 w-3/4">
                                 {formatDate(lastStreamInfo?.lastPaymentTime ?? BigInt(0))}
                             </td>
