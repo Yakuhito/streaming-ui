@@ -1,6 +1,7 @@
 'use client';
 
 import { Address, Clvm, CoinsetClient, Puzzle, StreamedCatParsingResult } from 'chia-wallet-sdk-wasm';
+import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { useEffect, useState } from 'react';
 
@@ -162,6 +163,37 @@ function StreamInfo({ parsedStreams }: { parsedStreams: [number, StreamedCatPars
                 </table>
             </div>
             <h2 className="text-xl font-semibold mt-8">Transactions</h2>
+            <ul> { parsedStreams.map(([spentBlockHeight, parseResult]) => {
+                if (spentBlockHeight === 0) {
+                    return (
+                        <li key={spentBlockHeight}>
+                            <Coin coinId={parseResult.streamedCat!.coin.coinId()} /> currently unspent.
+                        </li>
+                    );
+                }
+                
+                if(parseResult.lastSpendWasClawback) {
+                    return (
+                        <li key={spentBlockHeight}>
+                            <Coin coinId={parseResult.streamedCat!.coin.coinId()} /> clawed back; last payment was {(parseResult.lastPaymentAmountIfClawback / BigInt(1000)).toString()} CATs.
+                        </li>
+                    );
+                }
+
+                return (
+                    <li key={spentBlockHeight}>
+                        <Coin coinId={parseResult.streamedCat!.coin.coinId()} /> spent to claim x CATs.
+                    </li>
+                );
+            }) } </ul>
         </div>
     );
+}
+
+function Coin({ coinId }: { coinId: Uint8Array }) {
+    let hexId = Buffer.from(coinId).toString('hex');
+    let truncatedId = `${hexId.slice(0, 4)}...${hexId.slice(-4)}`;
+    return (
+            <span>Coin <Link href={`https://www.spacescan.io/coin/0x${hexId}`} className="text-blue-500 hover:text-blue-600">0x{truncatedId}</Link>{' '}</span>
+    )
 }
