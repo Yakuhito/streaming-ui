@@ -2,7 +2,9 @@
 
 import { useEffect, useState } from 'react';
 import { useAppSelector } from '../redux/hooks';
-import { Address, StreamingPuzzleInfo } from 'chia-wallet-sdk-wasm';
+import { Address, CoinsetClient, StreamingPuzzleInfo } from 'chia-wallet-sdk-wasm';
+import { useRouter } from 'next/router';
+import walletConnect from '../lib/walletConnectInstance';
 
 interface StreamFormData {
   assetId: string;
@@ -12,10 +14,11 @@ interface StreamFormData {
   clawbackAddress: string;
   startDate: string;
   endDate: string;
-  transactionFee: number;
+  transactionFee: string;
 }
 
 export default function NewStreamForm() {
+  const router = useRouter();
   const { address } = useAppSelector(state => state.wallet);
   const [status, setStatus] = useState<string>('Waiting for form');
   const [formData, setFormData] = useState<StreamFormData>({
@@ -26,7 +29,7 @@ export default function NewStreamForm() {
     clawbackAddress: '',
     startDate: '',
     endDate: '',
-    transactionFee: 0.0025,
+    transactionFee: '0.0025',
   });
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -37,12 +40,10 @@ export default function NewStreamForm() {
     }));
   };
 
-  // Format date to YYYY-MM-DDThh:mm format for datetime-local input
   const formatDateForInput = (date: Date) => {
     return date.toISOString().slice(0, 16);
   };
 
-  // Set default dates when component mounts
   useEffect(() => {
     const now = new Date();
     const oneMonthLater = new Date();
@@ -70,7 +71,6 @@ export default function NewStreamForm() {
     // -----
     try {
       setStatus('Parsing details...');
-      let assetId = Buffer.from(formData.assetId, 'hex');
       let receiverPuzzleHash = Address.decode(formData.receiverAddress).puzzleHash;
       let clawbackPuzzleHash = formData.clawbackEnabled ? Address.decode(formData.clawbackAddress).puzzleHash : null;
       let endTime = BigInt(new Date(formData.endDate).getTime() / 1000);
@@ -84,7 +84,30 @@ export default function NewStreamForm() {
       let memos = info.getLaunchHints().map(m => m.toHex());
       console.log({ memos });
 
-      setStatus('Sending transaction to wallet...');
+      setStatus('Looking for previous transaction...');
+      const coinset = CoinsetClient.mainnet();
+      let recordsResp = await coinset.getCoinRecordsByHint(innerPuzzleHash);
+
+      if(recordsResp.coinRecords?.length ?? 0 === 0) {
+        await walletConnect.sendCat(formData.assetId, destAddress, Math.floor(parseFloat(formData.amount) * 1000).toString(), Math.floor(parseFloat(formData.amount) * 1000000000000).toString(), memos);
+      }
+      setStatus('Waiting for transaction confirmation...');
+
+      while (recordsResp.coinRecords?.length ?? 0 === 0) {
+        await new Promise(resolve => setTimeout(resolve, 10000));
+        recordsResp = await coinset.getCoinRecordsByHint(innerPuzzleHash);
+      }
+
+      setStatus('Found coin :)');
+
+      let streamCoinId = recordsResp.coinRecords![0].coin.coinId();
+      let streamId = new Address(streamCoinId, "stream").encode();
+
+      const savedStreams = JSON.parse(localStorage.getItem('savedStreams') || '[]');
+      savedStreams.push(streamId);
+      localStorage.setItem('savedStreams', JSON.stringify(savedStreams));
+
+      router.push(`/stream/${streamId}`);
     } catch (error) {
       setStatus('Error while building transaction: ' + error);
       console.error('Error parsing details:', error);
@@ -102,7 +125,7 @@ export default function NewStreamForm() {
       clawbackAddress: '',
       startDate: formatDateForInput(now),
       endDate: formatDateForInput(oneMonthLater),
-      transactionFee: 0.0025,
+      transactionFee: '0.0025',
     });
     setStatus('Waiting for form...');
   };

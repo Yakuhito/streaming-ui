@@ -186,8 +186,11 @@ export class WalletConnect {
     }
   }
 
-  async sendCat(session: SessionTypes.Struct, assetId: string, address: string, amount: string, fee: string, memos: string[]): Promise<boolean> {
+  async sendCat( assetId: string, address: string, amount: string, fee: string, memos: string[]): Promise<boolean> {
     if (!this.client) return false;
+
+    const state = store.getState();
+    let session = state.wallet.session?.topic as any;
 
     try {
       const response = await this.client.request<{address: string}>({
