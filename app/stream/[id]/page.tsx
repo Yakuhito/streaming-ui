@@ -282,9 +282,9 @@ function ProgressBar({
     clawback: boolean;
 }) {
     // Calculate percentages ensuring they add up to exactly 100%
-    const claimedPercentage = Number((claimedAmount * BigInt(100)) / totalAmount);
-    const claimablePercentage = Number((claimableAmount * BigInt(100)) / totalAmount);
-    const leftToStreamPercentage = 100 - claimedPercentage - claimablePercentage;
+    const claimedPercentage = Number((claimedAmount * BigInt(100 * 1000000)) / totalAmount) / 1000000;
+    const claimablePercentage = Number((claimableAmount * BigInt(100 * 1000000)) / totalAmount) / 1000000;
+    const leftToStreamPercentage = 100.0 - claimedPercentage - claimablePercentage;
 
     return (
         <div className="space-y-2 xl:m-8 md:m-4">

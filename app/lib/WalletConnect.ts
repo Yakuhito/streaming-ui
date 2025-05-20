@@ -126,7 +126,7 @@ export class WalletConnect {
 
       const namespaces = {
         chia: {
-          methods: ['chia_getAddress'],
+          methods: ['chia_getAddress', 'chia_send'],
           chains: ["chia:mainnet"],
           events: [],
         },
@@ -190,16 +190,15 @@ export class WalletConnect {
     if (!this.client) return false;
 
     const state = store.getState();
-    let session = state.wallet.session?.topic as any;
 
     try {
       const response = await this.client.request<{address: string}>({
-        topic: session.topic,
+        topic: state.wallet.session?.topic ?? '',
         chainId: "chia:mainnet",
         request: {
           method: "chia_send",
           params: {
-            asset_id: assetId,
+            assetId: assetId,
             address: address,
             amount: amount,
             fee: fee,

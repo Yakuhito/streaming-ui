@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useAppSelector } from '../redux/hooks';
 import { Address, CoinsetClient, StreamingPuzzleInfo } from 'chia-wallet-sdk-wasm';
-import { useRouter } from 'next/router';
+import { useRouter } from 'next/navigation';
 import walletConnect from '../lib/walletConnectInstance';
 
 interface StreamFormData {
@@ -25,7 +25,7 @@ export default function NewStreamForm() {
     assetId: '',
     amount: '',
     receiverAddress: '',
-    clawbackEnabled: false,
+    clawbackEnabled: true,
     clawbackAddress: '',
     startDate: '',
     endDate: '',
@@ -41,7 +41,12 @@ export default function NewStreamForm() {
   };
 
   const formatDateForInput = (date: Date) => {
-    return date.toISOString().slice(0, 16);
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    const hours = String(date.getHours()).padStart(2, '0');
+    const minutes = String(date.getMinutes()).padStart(2, '0');
+    return `${year}-${month}-${day}T${hours}:${minutes}`;
   };
 
   useEffect(() => {
@@ -88,12 +93,13 @@ export default function NewStreamForm() {
       const coinset = CoinsetClient.mainnet();
       let recordsResp = await coinset.getCoinRecordsByHint(innerPuzzleHash);
 
-      if(recordsResp.coinRecords?.length ?? 0 === 0) {
-        await walletConnect.sendCat(formData.assetId, destAddress, Math.floor(parseFloat(formData.amount) * 1000).toString(), Math.floor(parseFloat(formData.amount) * 1000000000000).toString(), memos);
+      if((recordsResp.coinRecords?.length ?? 0) === 0) {
+        setStatus('Waiting for wallet confirmation by user...');
+        await walletConnect.sendCat(formData.assetId, destAddress, Math.floor(parseFloat(formData.amount) * 1000).toString(), Math.floor(parseFloat(formData.transactionFee) * 1000000000000).toString(), memos);
       }
       setStatus('Waiting for transaction confirmation...');
 
-      while (recordsResp.coinRecords?.length ?? 0 === 0) {
+      while ((recordsResp.coinRecords?.length ?? 0) === 0) {
         await new Promise(resolve => setTimeout(resolve, 10000));
         recordsResp = await coinset.getCoinRecordsByHint(innerPuzzleHash);
       }
@@ -121,13 +127,13 @@ export default function NewStreamForm() {
       assetId: '',
       amount: '',
       receiverAddress: '',
-      clawbackEnabled: false,
+      clawbackEnabled: true,
       clawbackAddress: '',
       startDate: formatDateForInput(now),
       endDate: formatDateForInput(oneMonthLater),
       transactionFee: '0.0025',
     });
-    setStatus('Waiting for form...');
+    setStatus('Waiting for form');
   };
 
   if (!address) {
@@ -238,7 +244,7 @@ export default function NewStreamForm() {
           name="transactionFee"
           value={formData.transactionFee}
           onChange={handleInputChange}
-          step="0.00001"
+          step="0.0000000001"
           min="0"
           placeholder="0.0025"
           className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
