@@ -1,9 +1,9 @@
 'use client';
 
-import { WalletConnectCoin, WalletConnectCoinSpend } from '@/app/lib/WalletConnect';
+import { WalletConnectCoinSpend } from '@/app/lib/WalletConnect';
 import walletConnect from '@/app/lib/walletConnectInstance';
 import { useAppSelector } from '@/app/redux/hooks';
-import { Address, Clvm, CoinsetClient, fromHex, PublicKey, Puzzle, standardPuzzleHash, StreamedCatParsingResult, toHex } from 'chia-wallet-sdk-wasm';
+import { Address, Clvm, CoinsetClient, fromHex, Program, PublicKey, Puzzle, Signature, Spend, SpendBundle, standardPuzzleHash, StreamedCatParsingResult, toHex } from 'chia-wallet-sdk-wasm';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
@@ -92,7 +92,7 @@ export default function StreamPage() {
       {
         streamData === null ? (<div className="text-gray-600">
             Loading stream details...
-        </div>) : (streamData?.parsedStreams?.length ?? 0 > 0 ? (<StreamInfo parsedStreams={streamData.parsedStreams!} />) : (<div className="text-gray-600">
+        </div>) : (streamData?.parsedStreams?.length ?? 0 > 0 ? (<StreamInfo parsedStreams={streamData.parsedStreams!} streamId={streamIdString} />) : (<div className="text-gray-600">
             Error loading stream.
         </div>))
     } 
@@ -100,7 +100,7 @@ export default function StreamPage() {
   );
 } 
 
-function StreamInfo({ parsedStreams }: { parsedStreams: [number, StreamedCatParsingResult][]}) {
+function StreamInfo({ parsedStreams, streamId }: { parsedStreams: [number, StreamedCatParsingResult][], streamId: string }) {
     const firstStream = parsedStreams[0];
     const lastStream = parsedStreams[parsedStreams.length - 1];
     
@@ -143,10 +143,15 @@ function StreamInfo({ parsedStreams }: { parsedStreams: [number, StreamedCatPars
     if (timestamp_now < lastStreamInfo!.lastPaymentTime) {
         timestamp_now = lastStreamInfo!.lastPaymentTime;
     }
-    let claimableAmount = lastStreamInfo?.amountToBePaid(lastStream[1].streamedCat!.coin.amount, timestamp_now) ?? BigInt(0);
+    let claimableAmount = BigInt(0);
     if (lastStream[1].lastSpendWasClawback) {
         claimableAmount = BigInt(0);
         claimableAmount += lastStream[1].lastPaymentAmountIfClawback;
+    } else {
+        if (lastStreamInfo?.lastPaymentTime !== lastStreamInfo?.endTime) {
+            // lastStreamInfo can be null if the stream is fully claimed
+            claimableAmount = lastStreamInfo?.amountToBePaid(lastStream[1].streamedCat?.coin.amount ?? BigInt(0), timestamp_now) ?? BigInt(0);
+        }
     }
 
     let amountLeftToStream = totalAmount - claimableAmount;
@@ -209,7 +214,7 @@ function StreamInfo({ parsedStreams }: { parsedStreams: [number, StreamedCatPars
                         <tr>
                             <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-500 border-r border-gray-200 w-1/4">Last Claim</td>
                             <td className="px-6 py-4 text-sm text-gray-900 w-3/4">
-                                {formatDate(lastStreamInfo?.lastPaymentTime ?? BigInt(0))} {!lastStream[1].lastSpendWasClawback ? <ClaimButton lastParsedStream={lastStream[1]} /> : ''}
+                                {formatDate(lastStreamInfo?.lastPaymentTime ?? BigInt(0))} {!lastStream[1].lastSpendWasClawback ? <ClaimButton lastParsedStream={lastStream[1]} streamId={streamId} /> : ''}
                             </td>
                         </tr>
                         <tr>
@@ -242,10 +247,19 @@ function StreamInfo({ parsedStreams }: { parsedStreams: [number, StreamedCatPars
 
                 const currentAmount = parseResult.streamedCat!.coin.amount;
                 const nextAmount = index < parsedStreams.length - 1 ? parsedStreams[index + 1][1].streamedCat!.coin.amount : BigInt(0);
-                const claimedAmount = (currentAmount - nextAmount) / BigInt(1000);
+                const claimedAmount = Number(currentAmount - nextAmount) / 1000;
+                console.log({ currentAmount, nextAmount, claimedAmount });
+
+                if (parseResult.streamedCat!.info.lastPaymentTime === parseResult.streamedCat!.info.endTime) {
+                    return (
+                        <li key={toHex(parseResult.streamedCat!.coin.coinId())}>
+                            All value claimed.
+                        </li>
+                    );
+                }
 
                 return (
-                    <li key={spentBlockHeight}>
+                    <li key={toHex(parseResult.streamedCat!.coin.coinId())}>
                         <Coin coinId={parseResult.streamedCat!.coin.coinId()} /> spent at block {spentBlockHeight} to claim {claimedAmount} CATs.
                     </li>
                 );
@@ -344,7 +358,7 @@ function Coin({ coinId }: { coinId: Uint8Array }) {
     )
 }
 
-function ClaimButton({ lastParsedStream }: { lastParsedStream: StreamedCatParsingResult }) {
+function ClaimButton({ lastParsedStream, streamId }: { lastParsedStream: StreamedCatParsingResult, streamId: string }) {
     const router = useRouter();
     const { address } = useAppSelector(state => state.wallet);
     const [buttonText, setButtonText] = useState("Claim");
@@ -402,67 +416,69 @@ function ClaimButton({ lastParsedStream }: { lastParsedStream: StreamedCatParsin
         setButtonText("Preparing transaction...");
         const ctx = new Clvm();
         const streamedCat = lastParsedStream.streamedCat!;
-        console.log('a1');
         
-        let claimTime = BigInt(Math.floor(new Date().getTime() / 1000) - 60);
+        let claimTime = Math.floor(new Date().getTime() / 1000 - 60);
         if (claimTime > lastParsedStream.streamedCat!.info.endTime) {
-            claimTime = lastParsedStream.streamedCat!.info.endTime;
+            claimTime = Number(lastParsedStream.streamedCat!.info.endTime);
         }
-        console.log('a2');
 
         let includedCoins = [];
         let totalAmount = BigInt(0);
-        console.log('a3');
         while(totalAmount < neededAmount) {
             totalAmount += coinRecords[includedCoins.length].coin.amount;
             includedCoins.push(coinRecords[includedCoins.length].coin);
-            console.log('a4');
         }
         const leadCoin = includedCoins[0];
-        console.log('a5');
         
-        let conditions = [
-            ctx.sendMessage(23, ctx.bigInt(claimTime).serialize(), [ctx.atom(streamedCat.coin.coinId())]),
+        let conditions: Program[] = [
+            ctx.sendMessage(23, ctx.int(claimTime).toAtom()!, [ctx.atom(streamedCat.coin.coinId())]),
             ctx.reserveFee(neededAmount),
         ];
-        console.log({ sendMessagePayload: ctx.bigInt(claimTime).serialize()});
-        console.log('a6');
         if (totalAmount > neededAmount) {
             conditions.push(ctx.createCoin(leadCoin.puzzleHash, totalAmount - neededAmount, null));
         }
-        console.log('a7');
-        ctx.spendStandardCoin(leadCoin, PublicKey.fromBytes(fromHex(publicKey))!, ctx.delegatedSpend(conditions));
-        console.log('a8');
+
+        // ctx.spendStandardCoin(leadCoin, PublicKey.fromBytes(fromHex(publicKey)), ctx.delegatedSpend(conditions));
+        ctx.spendCoin(leadCoin, ctx.standardSpend(PublicKey.fromBytes(fromHex(publicKey)), ctx.delegatedSpend(conditions)));
 
         if (includedCoins.length > 1) {
-            console.log('a9');
             for (let i = 1; i < includedCoins.length; i++) {
-                ctx.spendStandardCoin(includedCoins[i], PublicKey.fromBytes(fromHex(publicKey))!, ctx.delegatedSpend([
+                // ctx.spendStandardCoin(includedCoins[i], PublicKey.fromBytes(fromHex(publicKey)), ctx.delegatedSpend([
+                //     ctx.assertConcurrentSpend(leadCoin.coinId())
+                // ]));
+                ctx.spendCoin(includedCoins[i], ctx.standardSpend(PublicKey.fromBytes(fromHex(publicKey)), ctx.delegatedSpend([
                     ctx.assertConcurrentSpend(leadCoin.coinId())
-                ]));
+                ])));
             }
         }
-        console.log('a10');
 
+        let streamedCatCoinId = streamedCat.coin.coinId();
         ctx.spendStreamedCat(streamedCat, BigInt(claimTime), false);
-        console.log('a11');
 
-        const coinSpends = ctx.coinSpends().map(c => WalletConnectCoinSpend.fromCoinSpend(c));
-        console.log('a12');
+        const coinSpends = ctx.coinSpends();
 
         setButtonText("[Wallet Prompt] Awaiting signature...");
-        const signature = await walletConnect.signCoinSpends(coinSpends, false, true);
+        const signature = await walletConnect.signCoinSpends(coinSpends.map(c => WalletConnectCoinSpend.fromCoinSpend(c)), false, true);
         console.log({ signature });
 
+        setButtonText("Submitting bundle...");
+        let resp = await coinset.pushTx(new SpendBundle(coinSpends, Signature.fromBytes(fromHex(signature!.replace('0x', '')))));
+        console.log({ resp });
+
+        if (!resp.success || resp.status !== "SUCCESS") {
+            alert("Failed to submit bundle with status: " + resp.status + " and error: " + resp.error);
+            return;
+        }
+
         setButtonText("Awaiting block inclusion...");
-        let coinRecord = await coinset.getCoinRecordByName(streamedCat.coin.coinId());
+        let coinRecord = await coinset.getCoinRecordByName(streamedCatCoinId);
         while(!coinRecord.coinRecord?.spent) {
             await new Promise(resolve => setTimeout(resolve, 10000));
-            coinRecord = await coinset.getCoinRecordByName(streamedCat.coin.coinId());
+            coinRecord = await coinset.getCoinRecordByName(streamedCatCoinId);
         }
 
         setButtonText("Refreshing...");
-        router.refresh();
+        router.push(`/stream/${streamId}`);
     }
 
     const disabled = buttonText !== "Claim" || !fee;

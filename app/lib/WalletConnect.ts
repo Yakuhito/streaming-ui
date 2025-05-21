@@ -8,16 +8,16 @@ import { Coin, CoinSpend, toHex } from "chia-wallet-sdk-wasm";
 export class WalletConnectCoin {
   parent_coin_info: string;
   puzzle_hash: string;
-  amount: string;
+  amount: number;
 
-  constructor(parent_coin_info: string, puzzle_hash: string, amount: string) {
-    this.parent_coin_info = parent_coin_info;
-    this.puzzle_hash = puzzle_hash;
+  constructor(parentCoinInfo: string, puzzleHash: string, amount: number) {
+    this.parent_coin_info = parentCoinInfo;
+    this.puzzle_hash = puzzleHash;
     this.amount = amount;
   }
 
   public static fromCoin(coin: Coin): WalletConnectCoin {
-    return new WalletConnectCoin(toHex(coin.parentCoinInfo), toHex(coin.puzzleHash), coin.amount.toString());
+    return new WalletConnectCoin(toHex(coin.parentCoinInfo), toHex(coin.puzzleHash), Number(coin.amount));
   }
 }
 
@@ -26,14 +26,14 @@ export class WalletConnectCoinSpend {
   puzzle_reveal: string;
   solution: string;
 
-  constructor(coin: WalletConnectCoin, puzzle_reveal: string, solution: string) {
+  constructor(coin: WalletConnectCoin, puzzleReveal: string, solution: string) {
     this.coin = coin;
-    this.puzzle_reveal = puzzle_reveal;
+    this.puzzle_reveal = puzzleReveal;
     this.solution = solution;
   }
 
-  public static fromCoinSpend(coin_spend: CoinSpend): WalletConnectCoinSpend {
-    return new WalletConnectCoinSpend(WalletConnectCoin.fromCoin(coin_spend.coin), toHex(coin_spend.puzzleReveal), toHex(coin_spend.solution));
+  public static fromCoinSpend(coinSpend: CoinSpend): WalletConnectCoinSpend {
+    return new WalletConnectCoinSpend(WalletConnectCoin.fromCoin(coinSpend.coin), toHex(coinSpend.puzzleReveal), toHex(coinSpend.solution));
   }
 }
 
@@ -275,7 +275,7 @@ export class WalletConnect {
     }
   }
 
-  async signCoinSpends(coin_spends: WalletConnectCoinSpend[], parital: boolean, auto_submit: boolean): Promise<string | undefined> {
+  async signCoinSpends(coinSpends: WalletConnectCoinSpend[], parital: boolean, auto_submit: boolean): Promise<string | undefined> {
     if (!this.client) return undefined;
 
     const state = store.getState();
@@ -287,7 +287,7 @@ export class WalletConnect {
         request: {
           method: "chip0002_signCoinSpends",
           params: {
-            coin_spends, parital, auto_submit
+            coinSpends, parital, auto_submit
           },
         },
       });
