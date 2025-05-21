@@ -43,10 +43,9 @@ export default function StreamPage() {
 
             const ctx = new Clvm();
 
-            const puzz = new Puzzle(eveCoinSpend.coin.puzzleHash, ctx.deserialize(eveCoinSpend.puzzleReveal), eveCoinSpend.coin.puzzleHash);
-            const streamInfo = puzz.parseChildStreamedCat(eveCoinSpend.coin, ctx.deserialize(eveCoinSpend.puzzleReveal), ctx.deserialize(eveCoinSpend.solution))!;
+            const streamInfo = ctx.deserialize(eveCoinSpend.puzzleReveal).puzzle().parseChildStreamedCat(eveCoinSpend.coin, ctx.deserialize(eveCoinSpend.solution))!;
 
-            let parsedStreams: [number, StreamedCatParsingResult][] = [[0, streamInfo]];
+            let parsedStreams: [number, StreamedCatParsingResult][] = [[eveCoinRecord.spentBlockIndex!, streamInfo]];
 
             let latestStreamResult = streamInfo;
             let coinRecordResp = eveCoinRecordResponse;
@@ -58,7 +57,7 @@ export default function StreamPage() {
                 }
 
                 coinSpend = (await client.getPuzzleAndSolution(coinRecordResp.coinRecord!.coin.coinId(), coinRecordResp.coinRecord!.spentBlockIndex)).coinSolution!;
-                let parsed = puzz.parseChildStreamedCat(coinSpend.coin, ctx.deserialize(coinSpend.puzzleReveal), ctx.deserialize(coinSpend.solution))!;
+                let parsed = ctx.deserialize(coinSpend.puzzleReveal).puzzle().parseChildStreamedCat(coinSpend.coin, ctx.deserialize(coinSpend.solution))!;
                 
                 parsedStreams[parsedStreams.length - 1][0] = coinRecordResp.coinRecord.spentBlockIndex!;
                 parsedStreams.push([0, parsed]);
@@ -157,11 +156,6 @@ function StreamInfo({ parsedStreams }: { parsedStreams: [number, StreamedCatPars
 
     let amountLeftToStream = totalAmount - claimableAmount - claimedAmount;
 
-    // Calculate percentages ensuring they add up to exactly 100%
-    const claimedPercentage = Number((claimedAmount * BigInt(100)) / totalAmount);
-    const claimablePercentage = Number((claimableAmount * BigInt(100)) / totalAmount);
-    const leftToStreamPercentage = 100 - claimedPercentage - claimablePercentage;
-
     return (
         <div className="space-y-4">
             <h2 className="text-xl font-semibold">Stream Information</h2>
@@ -230,18 +224,18 @@ function StreamInfo({ parsedStreams }: { parsedStreams: [number, StreamedCatPars
 
             <h2 className="text-xl font-semibold mt-8">Transactions</h2>
             <ul className="list-disc pl-5 space-y-2 pb-8"> { parsedStreams.map(([spentBlockHeight, parseResult], index) => {
-                if (spentBlockHeight === 0) {
+                if(parseResult.lastSpendWasClawback) {
                     return (
                         <li key={spentBlockHeight}>
-                            <Coin coinId={parseResult.streamedCat!.coin.coinId()} /> currently unspent.
+                            {parseResult.streamedCat ? <Coin coinId={parseResult.streamedCat!.coin.coinId()} /> : 'Coin'} clawed back at block {spentBlockHeight}; last payment was {(Number(parseResult.lastPaymentAmountIfClawback) / 1000).toString()} CATs.
                         </li>
                     );
                 }
                 
-                if(parseResult.lastSpendWasClawback || !parseResult.streamedCat) {
+                if (spentBlockHeight === 0) {
                     return (
                         <li key={spentBlockHeight}>
-                            {parseResult.streamedCat ? <Coin coinId={parseResult.streamedCat!.coin.coinId()} /> : 'Coin'} clawed back at block {spentBlockHeight}; last payment was {(parseResult.lastPaymentAmountIfClawback / BigInt(1000)).toString()} CATs.
+                            <Coin coinId={parseResult.streamedCat!.coin.coinId()} /> currently unspent.
                         </li>
                     );
                 }
@@ -445,7 +439,7 @@ function ClaimButton({ lastParsedStream, isClawback }: { lastParsedStream: Strea
         const leadCoin = includedCoins[0];
         
         let conditions: Program[] = [
-            ctx.sendMessage(23, ctx.int(claimTime).toAtom()!, [ctx.atom(streamedCat.coin.coinId())]),
+            ctx.sendMessage(23, ctx.int(BigInt(claimTime)).toAtom()!, [ctx.atom(streamedCat.coin.coinId())]),
             ctx.reserveFee(neededAmount),
         ];
         if (totalAmount > neededAmount) {
