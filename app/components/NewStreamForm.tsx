@@ -95,7 +95,7 @@ export default function NewStreamForm() {
 
       if((recordsResp.coinRecords?.length ?? 0) === 0) {
         setStatus('Waiting for wallet confirmation by user...');
-        await walletConnect.sendCat(formData.assetId, destAddress, Math.floor(parseFloat(formData.amount) * 1000).toString(), Math.floor(parseFloat(formData.transactionFee) * 1000000000000).toString(), memos);
+        await walletConnect.sendAsset(formData.assetId, destAddress, Math.floor(parseFloat(formData.amount) * 1000).toString(), Math.floor(parseFloat(formData.transactionFee) * 1000000000000).toString(), memos);
       }
       setStatus('Waiting for transaction confirmation...');
 

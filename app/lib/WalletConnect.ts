@@ -186,7 +186,7 @@ export class WalletConnect {
     }
   }
 
-  async sendCat( assetId: string, address: string, amount: string, fee: string, memos: string[]): Promise<boolean> {
+  async sendAsset(assetId: string | null, address: string, amount: string, fee: string, memos: string[]): Promise<boolean> {
     if (!this.client) return false;
 
     const state = store.getState();

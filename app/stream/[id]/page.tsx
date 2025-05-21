@@ -2,7 +2,7 @@
 
 import walletConnect from '@/app/lib/walletConnectInstance';
 import { useAppSelector } from '@/app/redux/hooks';
-import { Address, Clvm, CoinsetClient, PublicKey, Puzzle, standardPuzzleHash, StreamedCatParsingResult } from 'chia-wallet-sdk-wasm';
+import { Address, Clvm, CoinsetClient, fromHex, Program, PublicKey, Puzzle, sha256, Spend, standardPuzzleHash, StreamedCatParsingResult, toHex } from 'chia-wallet-sdk-wasm';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { useEffect, useState } from 'react';
@@ -173,9 +173,9 @@ function StreamInfo({ parsedStreams }: { parsedStreams: [number, StreamedCatPars
                         <tr>
                             <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-500 border-r border-gray-200 w-1/4">Asset Id</td>
                             <td className="px-6 py-4 text-sm text-gray-900 w-3/4">
-                                <Link href={`https://dexie.space/assets/${Buffer.from(firstStream[1].streamedCat?.assetId ?? new Uint8Array()).toString('hex')}`} className="text-blue-500 hover:text-blue-600 underline" target="_blank">
-                                    <span className="hidden lg:inline">{Buffer.from(firstStream[1].streamedCat?.assetId ?? new Uint8Array()).toString('hex')}</span>
-                                    <span className="lg:hidden">{truncateAddress(Buffer.from(firstStream[1].streamedCat?.assetId ?? new Uint8Array()).toString('hex'))}</span>
+                                <Link href={`https://dexie.space/assets/${toHex(firstStream[1].streamedCat?.assetId ?? new Uint8Array())}`} className="text-blue-500 hover:text-blue-600 underline" target="_blank">
+                                    <span className="hidden lg:inline">{toHex(firstStream[1].streamedCat?.assetId ?? new Uint8Array())}</span>
+                                    <span className="lg:hidden">{truncateAddress(toHex(firstStream[1].streamedCat?.assetId ?? new Uint8Array()))}</span>
                                 </Link>
                             </td>
                         </tr>
@@ -336,7 +336,7 @@ function ProgressBar({
 }
 
 function Coin({ coinId }: { coinId: Uint8Array }) {
-    let hexId = Buffer.from(coinId).toString('hex');
+    let hexId = toHex(coinId);
     let truncatedId = `${hexId.slice(0, 4)}...${hexId.slice(-4)}`;
     return (
             <span>Coin <Link href={`https://www.spacescan.io/coin/0x${hexId}`} className="text-blue-500 hover:text-blue-600 underline" target="_blank">0x{truncatedId}</Link>{' '}</span>
@@ -346,6 +346,7 @@ function Coin({ coinId }: { coinId: Uint8Array }) {
 function ClaimButton({ lastParsedStream }: { lastParsedStream: StreamedCatParsingResult }) {
     const { address } = useAppSelector(state => state.wallet);
     const [buttonText, setButtonText] = useState("Claim");
+    const [fee, setFee] = useState<string>("");
 
     const handleClaim = async () => {
         setButtonText("Searching for public key...");
@@ -360,8 +361,8 @@ function ClaimButton({ lastParsedStream }: { lastParsedStream: StreamedCatParsin
             }
             
             for (const key of keys) {
-                if(new Address(standardPuzzleHash(PublicKey.fromBytes(Buffer.from(key, 'hex'))), 'xch').encode() === clawbackAddress) {
-                    publicKey = PublicKey.fromBytes(Buffer.from(key, 'hex'));
+                if(new Address(standardPuzzleHash(PublicKey.fromBytes(fromHex(key))), 'xch').encode() === clawbackAddress) {
+                    publicKey = PublicKey.fromBytes(fromHex(key));
                     break;
                 }
             }
@@ -375,15 +376,89 @@ function ClaimButton({ lastParsedStream }: { lastParsedStream: StreamedCatParsin
         }
 
         setButtonText("Searching for source coin...");
+        const coinset = CoinsetClient.mainnet();
+        const p2PuzzleHash = standardPuzzleHash(publicKey);
+        let coinRecords = (await coinset.getCoinRecordsByPuzzleHash(p2PuzzleHash, null, null, false)).coinRecords ?? [];
+
+        let neededAmount = BigInt(Math.floor(parseFloat(fee) * 1e12));
+        if(neededAmount === BigInt(0)) {
+            neededAmount = BigInt(1);
+        }
+
+
+        if (coinRecords.length === 0 || coinRecords.map(c => c.coin.amount).reduce((a, b) => a + b, BigInt(0)) < neededAmount) {
+            setButtonText("[Wallet Prompt]Sending coins to the right address...");
+            await walletConnect.sendAsset(null, new Address(p2PuzzleHash, 'xch').encode(), neededAmount.toString(), neededAmount.toString(), []);
+            setButtonText("Waiting for source coin...");
+        }
+
+        while( coinRecords.filter(c => !c.spent).map(c => c.coin.amount).reduce((a, b) => a + b, BigInt(0)) < neededAmount ) {
+            await new Promise(resolve => setTimeout(resolve, 10000));
+            coinRecords = (await coinset.getCoinRecordsByPuzzleHash(p2PuzzleHash, null, null, false)).coinRecords ?? [];
+        }
+
+        setButtonText("Preparing transaction...");
+        const ctx = new Clvm();
+        const streamedCat = lastParsedStream.streamedCat!;
+        
+        let claimTime = Math.floor(new Date().getTime() / 1000) - 60;
+
+        let includedCoins = [];
+        let totalAmount = BigInt(0);
+        while(totalAmount < neededAmount) {
+            totalAmount += coinRecords[includedCoins.length].coin.amount;
+            includedCoins.push(coinRecords[includedCoins.length].coin);
+        }
+        const leadCoin = includedCoins[0];
+        
+        let conditions = [
+            ctx.sendMessage(23, ctx.int(claimTime).serialize(), [ctx.atom(streamedCat.coin.coinId())]),
+            ctx.reserveFee(neededAmount),
+        ];
+        if (totalAmount > neededAmount) {
+            conditions.push(ctx.createCoin(leadCoin.puzzleHash, totalAmount - neededAmount, null));
+        }
+        ctx.spendStandardCoin(leadCoin, publicKey!, ctx.delegatedSpend(conditions));
+
+        if (includedCoins.length > 1) {
+            for (let i = 1; i < includedCoins.length; i++) {
+                ctx.spendStandardCoin(includedCoins[i], publicKey!, ctx.delegatedSpend([
+                    ctx.assertConcurrentSpend(leadCoin.coinId())
+                ]));
+            }
+        }
+
+        const userCoinSpends = ctx.coinSpends();
+
+        setButtonText("[Wallet Prompt] Awaiting signature...");
+
+        setButtonText("Building final bundle...");
+
+        setButtonText("Pushing transaction...");
+
+        setButtonText("Awaiting block inclusion...");
+
+        setButtonText("Refreshing...");
     }
 
-    const disabled = buttonText !== "Claim";
-    
-    return address && <button
-        onClick={handleClaim}
-        className={`ml-2 px-2 py-1 font-normal text-white rounded-lg transition-colors ${disabled ? "bg-blue-300" : "bg-blue-500 hover:bg-blue-600"}`}
-        disabled={disabled}
-    >
-        {buttonText}
-    </button>;
-    }
+    const disabled = buttonText !== "Claim" || !fee;
+
+    return address && (
+        <div className="inline-flex items-center gap-x-1 ml-4">
+            <input
+                type="text"
+                value={fee}
+                onChange={(e) => setFee(e.target.value)}
+                placeholder="Fee"
+                className="w-24 px-2 py-0.25 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            />
+            <button
+                onClick={handleClaim}
+                className={`px-2 py-0.5 font-normal text-white rounded-lg transition-colors ${disabled ? "bg-blue-300" : "bg-blue-500 hover:bg-blue-600"}`}
+                disabled={disabled}
+            >
+                {buttonText}
+            </button>
+        </div>
+    );
+}
