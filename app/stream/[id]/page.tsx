@@ -1,10 +1,11 @@
 'use client';
 
+import { WalletConnectCoin, WalletConnectCoinSpend } from '@/app/lib/WalletConnect';
 import walletConnect from '@/app/lib/walletConnectInstance';
 import { useAppSelector } from '@/app/redux/hooks';
-import { Address, Clvm, CoinsetClient, fromHex, Program, PublicKey, Puzzle, sha256, Spend, standardPuzzleHash, StreamedCatParsingResult, toHex } from 'chia-wallet-sdk-wasm';
+import { Address, Clvm, CoinsetClient, fromHex, PublicKey, Puzzle, standardPuzzleHash, StreamedCatParsingResult, toHex } from 'chia-wallet-sdk-wasm';
 import Link from 'next/link';
-import { useParams } from 'next/navigation';
+import { useParams, useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 
 interface StreamData {
@@ -344,6 +345,7 @@ function Coin({ coinId }: { coinId: Uint8Array }) {
 }
 
 function ClaimButton({ lastParsedStream }: { lastParsedStream: StreamedCatParsingResult }) {
+    const router = useRouter();
     const { address } = useAppSelector(state => state.wallet);
     const [buttonText, setButtonText] = useState("Claim");
     const [fee, setFee] = useState<string>("");
@@ -353,7 +355,7 @@ function ClaimButton({ lastParsedStream }: { lastParsedStream: StreamedCatParsin
         const clawbackAddress = new Address(lastParsedStream.streamedCat!.info.clawbackPh!, 'xch').encode();
 
         let startIndex = 0;
-        let publicKey: PublicKey | null = null;
+        let publicKey: string | null = null;
         while (!publicKey && startIndex < 10000) {
             const keys = await walletConnect.getPublicKeys(500,startIndex);
             if (!keys) {
@@ -362,7 +364,7 @@ function ClaimButton({ lastParsedStream }: { lastParsedStream: StreamedCatParsin
             
             for (const key of keys) {
                 if(new Address(standardPuzzleHash(PublicKey.fromBytes(fromHex(key))), 'xch').encode() === clawbackAddress) {
-                    publicKey = PublicKey.fromBytes(fromHex(key));
+                    publicKey = key;
                     break;
                 }
             }
@@ -377,7 +379,7 @@ function ClaimButton({ lastParsedStream }: { lastParsedStream: StreamedCatParsin
 
         setButtonText("Searching for source coin...");
         const coinset = CoinsetClient.mainnet();
-        const p2PuzzleHash = standardPuzzleHash(publicKey);
+        const p2PuzzleHash = standardPuzzleHash(PublicKey.fromBytes(fromHex(publicKey)));
         let coinRecords = (await coinset.getCoinRecordsByPuzzleHash(p2PuzzleHash, null, null, false)).coinRecords ?? [];
 
         let neededAmount = BigInt(Math.floor(parseFloat(fee) * 1e12));
@@ -388,7 +390,7 @@ function ClaimButton({ lastParsedStream }: { lastParsedStream: StreamedCatParsin
 
         if (coinRecords.length === 0 || coinRecords.map(c => c.coin.amount).reduce((a, b) => a + b, BigInt(0)) < neededAmount) {
             setButtonText("[Wallet Prompt]Sending coins to the right address...");
-            await walletConnect.sendAsset(null, new Address(p2PuzzleHash, 'xch').encode(), neededAmount.toString(), neededAmount.toString(), []);
+            await walletConnect.sendAsset("", new Address(p2PuzzleHash, 'xch').encode(), neededAmount.toString(), neededAmount.toString(), []);
             setButtonText("Waiting for source coin...");
         }
 
@@ -400,45 +402,67 @@ function ClaimButton({ lastParsedStream }: { lastParsedStream: StreamedCatParsin
         setButtonText("Preparing transaction...");
         const ctx = new Clvm();
         const streamedCat = lastParsedStream.streamedCat!;
+        console.log('a1');
         
-        let claimTime = Math.floor(new Date().getTime() / 1000) - 60;
+        let claimTime = BigInt(Math.floor(new Date().getTime() / 1000) - 60);
+        if (claimTime > lastParsedStream.streamedCat!.info.endTime) {
+            claimTime = lastParsedStream.streamedCat!.info.endTime;
+        }
+        console.log('a2');
 
         let includedCoins = [];
         let totalAmount = BigInt(0);
+        console.log('a3');
         while(totalAmount < neededAmount) {
             totalAmount += coinRecords[includedCoins.length].coin.amount;
             includedCoins.push(coinRecords[includedCoins.length].coin);
+            console.log('a4');
         }
         const leadCoin = includedCoins[0];
+        console.log('a5');
         
         let conditions = [
-            ctx.sendMessage(23, ctx.int(claimTime).serialize(), [ctx.atom(streamedCat.coin.coinId())]),
+            ctx.sendMessage(23, ctx.bigInt(claimTime).serialize(), [ctx.atom(streamedCat.coin.coinId())]),
             ctx.reserveFee(neededAmount),
         ];
+        console.log({ sendMessagePayload: ctx.bigInt(claimTime).serialize()});
+        console.log('a6');
         if (totalAmount > neededAmount) {
             conditions.push(ctx.createCoin(leadCoin.puzzleHash, totalAmount - neededAmount, null));
         }
-        ctx.spendStandardCoin(leadCoin, publicKey!, ctx.delegatedSpend(conditions));
+        console.log('a7');
+        ctx.spendStandardCoin(leadCoin, PublicKey.fromBytes(fromHex(publicKey))!, ctx.delegatedSpend(conditions));
+        console.log('a8');
 
         if (includedCoins.length > 1) {
+            console.log('a9');
             for (let i = 1; i < includedCoins.length; i++) {
-                ctx.spendStandardCoin(includedCoins[i], publicKey!, ctx.delegatedSpend([
+                ctx.spendStandardCoin(includedCoins[i], PublicKey.fromBytes(fromHex(publicKey))!, ctx.delegatedSpend([
                     ctx.assertConcurrentSpend(leadCoin.coinId())
                 ]));
             }
         }
+        console.log('a10');
 
-        const userCoinSpends = ctx.coinSpends();
+        ctx.spendStreamedCat(streamedCat, BigInt(claimTime), false);
+        console.log('a11');
+
+        const coinSpends = ctx.coinSpends().map(c => WalletConnectCoinSpend.fromCoinSpend(c));
+        console.log('a12');
 
         setButtonText("[Wallet Prompt] Awaiting signature...");
-
-        setButtonText("Building final bundle...");
-
-        setButtonText("Pushing transaction...");
+        const signature = await walletConnect.signCoinSpends(coinSpends, false, true);
+        console.log({ signature });
 
         setButtonText("Awaiting block inclusion...");
+        let coinRecord = await coinset.getCoinRecordByName(streamedCat.coin.coinId());
+        while(!coinRecord.coinRecord?.spent) {
+            await new Promise(resolve => setTimeout(resolve, 10000));
+            coinRecord = await coinset.getCoinRecordByName(streamedCat.coin.coinId());
+        }
 
         setButtonText("Refreshing...");
+        router.refresh();
     }
 
     const disabled = buttonText !== "Claim" || !fee;

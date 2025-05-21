@@ -3,6 +3,39 @@ import { SessionTypes } from "@walletconnect/types";
 import { toast } from 'react-hot-toast';
 import { store } from '../redux/store';
 import { initialize, generateQrCode, disconnect } from '../redux/walletSlice';
+import { Coin, CoinSpend, toHex } from "chia-wallet-sdk-wasm";
+
+export class WalletConnectCoin {
+  parent_coin_info: string;
+  puzzle_hash: string;
+  amount: string;
+
+  constructor(parent_coin_info: string, puzzle_hash: string, amount: string) {
+    this.parent_coin_info = parent_coin_info;
+    this.puzzle_hash = puzzle_hash;
+    this.amount = amount;
+  }
+
+  public static fromCoin(coin: Coin): WalletConnectCoin {
+    return new WalletConnectCoin(toHex(coin.parentCoinInfo), toHex(coin.puzzleHash), coin.amount.toString());
+  }
+}
+
+export class WalletConnectCoinSpend {
+  coin: WalletConnectCoin;
+  puzzle_reveal: string;
+  solution: string;
+
+  constructor(coin: WalletConnectCoin, puzzle_reveal: string, solution: string) {
+    this.coin = coin;
+    this.puzzle_reveal = puzzle_reveal;
+    this.solution = solution;
+  }
+
+  public static fromCoinSpend(coin_spend: CoinSpend): WalletConnectCoinSpend {
+    return new WalletConnectCoinSpend(WalletConnectCoin.fromCoin(coin_spend.coin), toHex(coin_spend.puzzleReveal), toHex(coin_spend.solution));
+  }
+}
 
 export class WalletConnect {
   private client: SignClient | undefined;
@@ -229,6 +262,32 @@ export class WalletConnect {
           method: "chip0002_getPublicKeys",
           params: {
             limit, offset
+          },
+        },
+      });
+
+      console.log({ response });
+
+      return response;
+    } catch (error: any) {
+      console.error("Failed to send cat:", error);
+      return undefined;
+    }
+  }
+
+  async signCoinSpends(coin_spends: WalletConnectCoinSpend[], parital: boolean, auto_submit: boolean): Promise<string | undefined> {
+    if (!this.client) return undefined;
+
+    const state = store.getState();
+
+    try {
+      const response = await this.client.request<string>({
+        topic: state.wallet.session?.topic ?? '',
+        chainId: "chia:mainnet",
+        request: {
+          method: "chip0002_signCoinSpends",
+          params: {
+            coin_spends, parital, auto_submit
           },
         },
       });
