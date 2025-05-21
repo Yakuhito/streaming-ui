@@ -92,7 +92,7 @@ export default function StreamPage() {
       {
         streamData === null ? (<div className="text-gray-600">
             Loading stream details...
-        </div>) : (streamData?.parsedStreams?.length ?? 0 > 0 ? (<StreamInfo parsedStreams={streamData.parsedStreams!} streamId={streamIdString} />) : (<div className="text-gray-600">
+        </div>) : (streamData?.parsedStreams?.length ?? 0 > 0 ? (<StreamInfo parsedStreams={streamData.parsedStreams!} />) : (<div className="text-gray-600">
             Error loading stream.
         </div>))
     } 
@@ -100,7 +100,7 @@ export default function StreamPage() {
   );
 } 
 
-function StreamInfo({ parsedStreams, streamId }: { parsedStreams: [number, StreamedCatParsingResult][], streamId: string }) {
+function StreamInfo({ parsedStreams }: { parsedStreams: [number, StreamedCatParsingResult][]}) {
     const firstStream = parsedStreams[0];
     const lastStream = parsedStreams[parsedStreams.length - 1];
     
@@ -214,13 +214,13 @@ function StreamInfo({ parsedStreams, streamId }: { parsedStreams: [number, Strea
                         <tr>
                             <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-500 border-r border-gray-200 w-1/4">Last Claim</td>
                             <td className="px-6 py-4 text-sm text-gray-900 w-3/4">
-                                {formatDate(lastStreamInfo?.lastPaymentTime ?? BigInt(0))} {!lastStream[1].lastSpendWasClawback ? <ClaimButton lastParsedStream={lastStream[1]} streamId={streamId} /> : ''}
+                                {formatDate(lastStreamInfo?.lastPaymentTime ?? BigInt(0))} {!lastStream[1].lastSpendWasClawback ? <ClaimButton lastParsedStream={lastStream[1]} isClawback={false} /> : ''}
                             </td>
                         </tr>
                         <tr>
                             <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-500 border-r border-gray-200 w-1/4">Clawed Back</td>
                             <td className="px-6 py-4 text-sm text-gray-900 w-3/4">
-                                {lastStream[1].lastSpendWasClawback ? "Yes" : "No"}
+                                {lastStream[1].lastSpendWasClawback ? "Yes" : "No"} {!lastStream[1].lastSpendWasClawback ? <ClaimButton lastParsedStream={lastStream[1]} isClawback={true} /> : ''}
                             </td>
                         </tr>
                     </tbody>
@@ -358,15 +358,17 @@ function Coin({ coinId }: { coinId: Uint8Array }) {
     )
 }
 
-function ClaimButton({ lastParsedStream, streamId }: { lastParsedStream: StreamedCatParsingResult, streamId: string }) {
-    const router = useRouter();
+function ClaimButton({ lastParsedStream, isClawback }: { lastParsedStream: StreamedCatParsingResult, isClawback: boolean }) {
     const { address } = useAppSelector(state => state.wallet);
-    const [buttonText, setButtonText] = useState("Claim");
+    const [buttonText, setButtonText] = useState(isClawback ? "Claw Back" : "Claim");
     const [fee, setFee] = useState<string>("");
 
     const handleClaim = async () => {
         setButtonText("Searching for public key...");
-        const clawbackAddress = new Address(lastParsedStream.streamedCat!.info.clawbackPh!, 'xch').encode();
+        let address = new Address(lastParsedStream.streamedCat!.info.clawbackPh!, 'xch').encode();
+        if (!isClawback) {
+            address = new Address(lastParsedStream.streamedCat!.info.recipient!, 'xch').encode();
+        }
 
         let startIndex = 0;
         let publicKey: string | null = null;
@@ -377,7 +379,7 @@ function ClaimButton({ lastParsedStream, streamId }: { lastParsedStream: Streame
             }
             
             for (const key of keys) {
-                if(new Address(standardPuzzleHash(PublicKey.fromBytes(fromHex(key))), 'xch').encode() === clawbackAddress) {
+                if(new Address(standardPuzzleHash(PublicKey.fromBytes(fromHex(key))), 'xch').encode() === address) {
                     publicKey = key;
                     break;
                 }
@@ -408,7 +410,7 @@ function ClaimButton({ lastParsedStream, streamId }: { lastParsedStream: Streame
             setButtonText("Waiting for source coin...");
         }
 
-        while( coinRecords.filter(c => !c.spent).map(c => c.coin.amount).reduce((a, b) => a + b, BigInt(0)) < neededAmount ) {
+        while(coinRecords.filter(c => !c.spent).map(c => c.coin.amount).reduce((a, b) => a + b, BigInt(0)) < neededAmount ) {
             await new Promise(resolve => setTimeout(resolve, 10000));
             coinRecords = (await coinset.getCoinRecordsByPuzzleHash(p2PuzzleHash, null, null, false)).coinRecords ?? [];
         }
@@ -417,7 +419,10 @@ function ClaimButton({ lastParsedStream, streamId }: { lastParsedStream: Streame
         const ctx = new Clvm();
         const streamedCat = lastParsedStream.streamedCat!;
         
-        let claimTime = Math.floor(new Date().getTime() / 1000 - 60);
+        let claimTime = Math.floor(new Date().getTime() / 1000) - 60;
+        if(isClawback) {
+            claimTime += 60 + 600; // 10 mins in the future
+        }
         if (claimTime > lastParsedStream.streamedCat!.info.endTime) {
             claimTime = Number(lastParsedStream.streamedCat!.info.endTime);
         }
@@ -453,7 +458,7 @@ function ClaimButton({ lastParsedStream, streamId }: { lastParsedStream: Streame
         }
 
         let streamedCatCoinId = streamedCat.coin.coinId();
-        ctx.spendStreamedCat(streamedCat, BigInt(claimTime), false);
+        ctx.spendStreamedCat(streamedCat, BigInt(claimTime), isClawback);
 
         const coinSpends = ctx.coinSpends();
 
@@ -478,10 +483,10 @@ function ClaimButton({ lastParsedStream, streamId }: { lastParsedStream: Streame
         }
 
         setButtonText("Refreshing...");
-        router.push(`/stream/${streamId}`);
+        window.location.reload();
     }
 
-    const disabled = buttonText !== "Claim" || !fee;
+    const disabled = buttonText !== (isClawback ? "Claw Back" : "Claim") || !fee;
 
     return address && (
         <div className="inline-flex items-center gap-x-1 ml-4">
