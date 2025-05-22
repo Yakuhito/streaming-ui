@@ -512,29 +512,33 @@ function ClaimButton({ lastParsedStream, isClawback }: { lastParsedStream: Strea
         if(isClawback) {
             console.log('z1');
             const claimAmount = streamedCat.info.amountToBePaid(streamedCat.coin.amount, BigInt(claimTime));
+            const innerPh = toHex(Address.decode(address!).puzzleHash);
+            const userCoinAmount = streamedCat.coin.amount - claimAmount;
             let userCoin = new Coin(
                 streamedCat.coin.coinId(),
-                catPuzzleHash(streamedCat.assetId, lastParsedStream.streamedCat!.info.clawbackPh!),
-                streamedCat.coin.amount - claimAmount
+                catPuzzleHash(streamedCat.assetId, fromHex(innerPh)),
+                userCoinAmount
             );
-            ctx.spendCatCoins([
-                new CatSpend(
-                    new Cat(
-                        userCoin,
-                        new LineageProof(
-                            streamedCat.coin.parentCoinInfo,
-                            streamedCat.info.innerPuzzleHash(),
-                            streamedCat.coin.amount
-                        ),
-                        streamedCat.assetId,
-                        lastParsedStream.streamedCat!.info.clawbackPh!
-                    ),
-                    ctx.standardSpend(PublicKey.fromBytes(fromHex(publicKey)), ctx.delegatedSpend([
-                        ctx.createCoin(userCoin.puzzleHash, userCoin.amount, null)
-                    ]))
-                )
-            ]);
             console.log('z2');
+            const cat = new Cat(
+                userCoin,
+                new LineageProof(
+                    streamedCat.coin.parentCoinInfo,
+                    streamedCat.info.innerPuzzleHash(),
+                    streamedCat.coin.amount
+                ),
+                streamedCat.assetId,
+                fromHex(innerPh)
+            );
+            console.log('z3');
+            const catInnerSpend = ctx.standardSpend(PublicKey.fromBytes(fromHex(publicKey)), ctx.delegatedSpend([
+                ctx.createCoin(fromHex(innerPh), userCoinAmount, ctx.list([ctx.atom(fromHex(innerPh))]))
+            ]));
+            console.log('z4');
+            ctx.spendCatCoins([
+                new CatSpend(cat, catInnerSpend)
+            ]);
+            console.log('z5');
         }
 
         console.log('j'); // todo: debug
