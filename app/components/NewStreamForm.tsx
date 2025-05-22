@@ -5,7 +5,6 @@ import { useEffect, useState } from 'react';
 import { useAppSelector } from '../redux/hooks';
 import { useRouter } from 'next/navigation';
 import walletConnect from '../lib/walletConnectInstance';
-import { toHex } from 'chia-wallet-sdk-wasm';
 
 interface StreamFormData {
   assetId: string;
@@ -20,7 +19,7 @@ interface StreamFormData {
 
 export default dynamic(
   async function DynamicElem() {
-    const { Address, CoinsetClient, StreamingPuzzleInfo } = await import('chia-wallet-sdk-wasm');
+    const { Address, CoinsetClient, StreamingPuzzleInfo, toHex } = await import('chia-wallet-sdk-wasm');
 
     return function NewStreamForm() {
       const router = useRouter();
