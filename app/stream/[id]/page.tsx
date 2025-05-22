@@ -411,7 +411,7 @@ function ClaimButton({ lastParsedStream, isClawback }: { lastParsedStream: Strea
 
         let startIndex = 0;
         let publicKey: string | null = null;
-        while (!publicKey && startIndex < 10000) {
+        while (!publicKey && startIndex < 100000) {
             const keys = await walletConnect.getPublicKeys(500,startIndex);
             if (!keys) {
                 break;
