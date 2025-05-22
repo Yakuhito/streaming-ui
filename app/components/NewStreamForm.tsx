@@ -5,6 +5,7 @@ import { useEffect, useState } from 'react';
 import { useAppSelector } from '../redux/hooks';
 import { useRouter } from 'next/navigation';
 import walletConnect from '../lib/walletConnectInstance';
+import { toHex } from 'chia-wallet-sdk-wasm';
 
 interface StreamFormData {
   assetId: string;
@@ -90,7 +91,7 @@ export default dynamic(
           let destAddress = new Address(innerPuzzleHash, "xch").encode();
           console.log({ destAddress});
 
-          let memos = info.getLaunchHints().map(m => m.toHex());
+          let memos = info.getLaunchHints().map(m => toHex(m));
           console.log({ memos });
 
           setStatus('Looking for previous transaction...');
