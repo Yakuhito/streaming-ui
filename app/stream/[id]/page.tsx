@@ -3,13 +3,15 @@
 import { WalletConnectCoinSpend } from '@/app/lib/WalletConnect';
 import walletConnect from '@/app/lib/walletConnectInstance';
 import { useAppSelector } from '@/app/redux/hooks';
-import { Address, Clvm, CoinsetClient, fromHex, Program, PublicKey, Puzzle, Signature, Spend, SpendBundle, standardPuzzleHash, StreamedCatParsingResult, toHex } from 'chia-wallet-sdk-wasm';
+import { Address, Clvm, CoinsetClient, fromHex, Program, PublicKey, Signature, SpendBundle, standardPuzzleHash, StreamedCatParsingResult, toHex } from 'chia-wallet-sdk-wasm';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { useEffect, useState } from 'react';
 
 interface StreamData {
-  parsedStreams: [number, StreamedCatParsingResult][] | null;
+  parsedStreams: [number, bigint, StreamedCatParsingResult][] | null;
+  lastCoinId: Uint8Array | null;
+  unspentStream: StreamedCatParsingResult | null;
 }
 
 export default function StreamPage() {
@@ -31,41 +33,75 @@ export default function StreamPage() {
         (async () => {
             const streamId = Address.decode(streamIdString).puzzleHash;
             const client = CoinsetClient.mainnet();
-
-            const eveCoinRecordResponse = await client.getCoinRecordByName(streamId);
-            if (!eveCoinRecordResponse.success ) {
-                alert('Could not fetch eve coin record - stream id may not be valid.');
-                return;
-            }
-        
-            const eveCoinRecord = eveCoinRecordResponse.coinRecord!;
-            const eveCoinSpend = (await client.getPuzzleAndSolution(eveCoinRecord.coin.parentCoinInfo, eveCoinRecord.confirmedBlockIndex)).coinSolution!;
-
             const ctx = new Clvm();
 
-            const streamInfo = ctx.deserialize(eveCoinSpend.puzzleReveal).puzzle().parseChildStreamedCat(eveCoinSpend.coin, ctx.deserialize(eveCoinSpend.solution))!;
+            let parsedStreams: [number, bigint, StreamedCatParsingResult][] = [];
 
-            let parsedStreams: [number, StreamedCatParsingResult][] = [[eveCoinRecord.spentBlockIndex!, streamInfo]];
+            let firstRun = true;
+            let latestCoinId = streamId;
+            let latestStream: StreamedCatParsingResult | null = null;
 
-            let latestStreamResult = streamInfo;
-            let coinRecordResp = eveCoinRecordResponse;
-            let coinSpend = eveCoinSpend;
-            while (!latestStreamResult.lastSpendWasClawback && latestStreamResult.streamedCat) {
-                coinRecordResp = await client.getCoinRecordByName(latestStreamResult.streamedCat!.coin.coinId());
-                if (!coinRecordResp.success || !coinRecordResp.coinRecord || !coinRecordResp.coinRecord?.spent) {
+            while(true) {
+                let coinRecordResp = await client.getCoinRecordByName(latestCoinId);
+                if(!coinRecordResp.success || !coinRecordResp.coinRecord) {
                     break;
                 }
 
-                coinSpend = (await client.getPuzzleAndSolution(coinRecordResp.coinRecord!.coin.coinId(), coinRecordResp.coinRecord!.spentBlockIndex)).coinSolution!;
-                let parsed = ctx.deserialize(coinSpend.puzzleReveal).puzzle().parseChildStreamedCat(coinSpend.coin, ctx.deserialize(coinSpend.solution))!;
-                
-                parsedStreams[parsedStreams.length - 1][0] = coinRecordResp.coinRecord.spentBlockIndex!;
-                parsedStreams.push([0, parsed]);
-                latestStreamResult = parsed;
+                if(firstRun) {
+                    latestCoinId = coinRecordResp.coinRecord.coin.parentCoinInfo;
+                    firstRun = false;
+                    continue;
+                }
+
+                if(!coinRecordResp.coinRecord.spent) {
+                    latestCoinId = coinRecordResp.coinRecord.coin.coinId();
+                    break;
+                }
+
+                let puzzleAndSolution = await client.getPuzzleAndSolution(coinRecordResp.coinRecord.coin.coinId(), coinRecordResp.coinRecord.spentBlockIndex!);
+                if(!puzzleAndSolution.success || !puzzleAndSolution.coinSolution) {
+                    break;
+                }
+
+                let newStreamInfo = ctx.deserialize(puzzleAndSolution.coinSolution.puzzleReveal)
+                    .puzzle()
+                    .parseChildStreamedCat(
+                        puzzleAndSolution.coinSolution.coin,
+                        ctx.deserialize(puzzleAndSolution.coinSolution.solution)
+                    )!;
+                if(newStreamInfo.lastSpendWasClawback) {
+                    parsedStreams.push([0, newStreamInfo.lastPaymentAmountIfClawback, latestStream!]);
+                    break;
+                }
+
+                if(latestStream) {
+                    parsedStreams.push([
+                        coinRecordResp.coinRecord.spentBlockIndex!,
+                        coinRecordResp.coinRecord.coin.amount - (newStreamInfo.streamedCat?.coin.amount ?? BigInt(0)),
+                        latestStream
+                    ]);
+                }
+
+                latestCoinId = newStreamInfo.streamedCat!.coin.coinId();
+                latestStream = newStreamInfo;
             }
 
             console.log("Parsed streams #: ", parsedStreams.length);
-            setStreamData({ parsedStreams: parsedStreams });
+            if (parsedStreams?.length ?? 0 > 0) {
+                if (
+                    parsedStreams[parsedStreams.length - 1][0] === 0 ||
+                    parsedStreams[parsedStreams.length - 1][2].streamedCat?.info.lastPaymentTime === parsedStreams[parsedStreams.length - 1][2].streamedCat?.info.endTime
+                ) {
+                    console.log('no unspent stream');
+                    setStreamData({ parsedStreams: parsedStreams, lastCoinId: latestCoinId, unspentStream: null });
+                } else {
+                    console.log('unspent stream');
+                    setStreamData({ parsedStreams: parsedStreams, lastCoinId: null, unspentStream: latestStream });
+                }
+            } else {
+                console.log('unspent stream');
+                setStreamData({ parsedStreams: parsedStreams, lastCoinId: null, unspentStream: latestStream });
+            }
 
             // Update saved streams in localStorage - remove if exists and add as last element
             const savedStreams = JSON.parse(localStorage.getItem('savedStreams') || '[]');
@@ -92,7 +128,7 @@ export default function StreamPage() {
       {
         streamData === null ? (<div className="text-gray-600">
             Loading stream details...
-        </div>) : (streamData?.parsedStreams?.length ?? 0 > 0 ? (<StreamInfo parsedStreams={streamData.parsedStreams!} />) : (<div className="text-gray-600">
+        </div>) : (streamData?.parsedStreams ? (<StreamInfo streamData={streamData} />) : (<div className="text-gray-600">
             Error loading stream.
         </div>))
     } 
@@ -100,13 +136,16 @@ export default function StreamPage() {
   );
 } 
 
-function StreamInfo({ parsedStreams }: { parsedStreams: [number, StreamedCatParsingResult][]}) {
-    const firstStream = parsedStreams[0];
-    const lastStream = parsedStreams[parsedStreams.length - 1];
+function StreamInfo({ streamData }: { streamData: StreamData }) {
+    let firstStream: [number, bigint, StreamedCatParsingResult | null] = [0, BigInt(0),streamData.unspentStream];
+    if(streamData.parsedStreams?.length ?? 0 > 0) {
+        firstStream = streamData.parsedStreams![0];
+    }
+    const unspentStream = streamData.unspentStream;
     
     // Get the streaming info from the first stream
-    const firstStreamInfo = firstStream[1].streamedCat?.info;
-    const lastStreamInfo = lastStream[1].streamedCat?.info;
+    const firstStreamInfo = firstStream[2]!.streamedCat?.info;
+    const unspentStreamInfo = unspentStream?.streamedCat?.info;
     
     const [currentTime, setCurrentTime] = useState<bigint>(BigInt(Math.floor(Date.now() / 1000) - 120));
 
@@ -132,26 +171,25 @@ function StreamInfo({ parsedStreams }: { parsedStreams: [number, StreamedCatPars
         return `${address.slice(0, 7)}...${address.slice(-3)}`;
     };
 
-    const totalAmount = firstStream[1].streamedCat!.coin.amount;
-    const unclaimedAmount = lastStream[1].streamedCat?.coin.amount ?? BigInt(0);
-    let claimedAmount = totalAmount - unclaimedAmount;
+    const clawedBack = streamData.parsedStreams!.length > 0 && streamData.parsedStreams![streamData.parsedStreams!.length - 1][0] === 0;
+
+    const totalAmount = firstStream[2]!.streamedCat!.coin.amount;
+    let claimedAmount = (streamData.parsedStreams ?? []).filter(s => s[0] !== 0 && s[2].streamedCat).map(s => s[1]).reduce((a, b) => a + b, BigInt(0));
+    if (clawedBack) {
+        claimedAmount += streamData.parsedStreams![streamData.parsedStreams?.length! - 1][1];
+    }
 
     let timestamp_now = currentTime;
-    if (timestamp_now > (lastStreamInfo?.endTime ?? timestamp_now)) {
-        timestamp_now = lastStreamInfo!.endTime;
+    if (unspentStreamInfo && timestamp_now > unspentStreamInfo?.endTime) {
+        timestamp_now = unspentStreamInfo!.endTime;
     }
-    if (timestamp_now < (lastStreamInfo?.lastPaymentTime ?? timestamp_now)) {
-        timestamp_now = lastStreamInfo!.lastPaymentTime;
+    if (unspentStreamInfo && timestamp_now < unspentStreamInfo?.lastPaymentTime) {
+        timestamp_now = unspentStreamInfo!.lastPaymentTime;
     }
     let claimableAmount = BigInt(0);
-    if (lastStream[1].lastSpendWasClawback) {
-        claimableAmount = BigInt(0);
-        claimableAmount += lastStream[1].lastPaymentAmountIfClawback;
-    } else {
-        if (lastStreamInfo?.lastPaymentTime !== lastStreamInfo?.endTime) {
-            // lastStreamInfo can be null if the stream is fully claimed
-            claimableAmount = lastStreamInfo?.amountToBePaid(lastStream[1].streamedCat?.coin.amount ?? BigInt(0), timestamp_now) ?? BigInt(0);
-        }
+    if (unspentStream?.streamedCat && unspentStream?.streamedCat!.coin.amount > 0) {
+        // we're here if the stream is not over & last spend was not a clawback
+        claimableAmount = unspentStream.streamedCat!.info.amountToBePaid(unspentStream?.streamedCat!.coin.amount, timestamp_now);
     }
 
     let amountLeftToStream = totalAmount - claimableAmount - claimedAmount;
@@ -165,7 +203,7 @@ function StreamInfo({ parsedStreams }: { parsedStreams: [number, StreamedCatPars
                 claimableAmount={claimableAmount}
                 amountLeftToStream={amountLeftToStream}
                 totalAmount={totalAmount}
-                clawback={lastStream[1].lastSpendWasClawback}
+                clawback={clawedBack}
             />
 
             <div className="overflow-x-auto xl:m-8 md:m-4">
@@ -174,9 +212,9 @@ function StreamInfo({ parsedStreams }: { parsedStreams: [number, StreamedCatPars
                         <tr>
                             <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-500 border-r border-gray-200 w-1/4">Asset Id</td>
                             <td className="px-6 py-4 text-sm text-gray-900 w-3/4">
-                                <Link href={`https://dexie.space/assets/${toHex(firstStream[1].streamedCat?.assetId ?? new Uint8Array())}`} className="text-blue-500 hover:text-blue-600 underline" target="_blank">
-                                    <span className="hidden lg:inline">{toHex(firstStream[1].streamedCat?.assetId ?? new Uint8Array())}</span>
-                                    <span className="lg:hidden">{truncateAddress(toHex(firstStream[1].streamedCat?.assetId ?? new Uint8Array()))}</span>
+                                <Link href={`https://dexie.space/assets/${toHex(firstStream[2]!.streamedCat!.assetId)}`} className="text-blue-500 hover:text-blue-600 underline" target="_blank">
+                                    <span className="hidden lg:inline">{toHex(firstStream[2]!.streamedCat!.assetId)}</span>
+                                    <span className="lg:hidden">{truncateAddress(toHex(firstStream[2]!.streamedCat!.assetId))}</span>
                                 </Link>
                             </td>
                         </tr>
@@ -209,13 +247,13 @@ function StreamInfo({ parsedStreams }: { parsedStreams: [number, StreamedCatPars
                         <tr>
                             <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-500 border-r border-gray-200 w-1/4">Last Claim</td>
                             <td className="px-6 py-4 text-sm text-gray-900 w-3/4">
-                                {formatDate(lastStreamInfo?.lastPaymentTime ?? BigInt(0))} {!lastStream[1].lastSpendWasClawback ? <ClaimButton lastParsedStream={lastStream[1]} isClawback={false} /> : ''}
+                                {formatDate(unspentStreamInfo?.lastPaymentTime ?? firstStreamInfo?.endTime ?? BigInt(0))} {unspentStream ? <ClaimButton lastParsedStream={unspentStream} isClawback={false} /> : ''}
                             </td>
                         </tr>
                         <tr>
                             <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-500 border-r border-gray-200 w-1/4">Clawed Back</td>
                             <td className="px-6 py-4 text-sm text-gray-900 w-3/4">
-                                {lastStream[1].lastSpendWasClawback ? "Yes" : "No"} {!lastStream[1].lastSpendWasClawback ? <ClaimButton lastParsedStream={lastStream[1]} isClawback={true} /> : ''}
+                                {clawedBack ? "Yes" : "No"} {unspentStream ? <ClaimButton lastParsedStream={unspentStream} isClawback={true} /> : ''}
                             </td>
                         </tr>
                     </tbody>
@@ -223,50 +261,27 @@ function StreamInfo({ parsedStreams }: { parsedStreams: [number, StreamedCatPars
             </div>
 
             <h2 className="text-xl font-semibold mt-8">Transactions</h2>
-            <ul className="list-disc pl-5 space-y-2 pb-8"> { parsedStreams.map(([spentBlockHeight, parseResult], index) => {
-                if(parseResult.lastSpendWasClawback) {
+            <ul className="list-disc pl-5 space-y-2 pb-8"> { streamData.parsedStreams!.map(([spentBlockHeight, amountClaimed, parseResult]) => {
+                if(spentBlockHeight === 0) {
                     return (
                         <li key={spentBlockHeight}>
-                            {parseResult.streamedCat ? <Coin coinId={parseResult.streamedCat!.coin.coinId()} /> : 'Coin'} clawed back at block {spentBlockHeight}; last payment was {(Number(parseResult.lastPaymentAmountIfClawback) / 1000).toString()} CATs.
-                        </li>
-                    );
-                }
-                
-                if (spentBlockHeight === 0) {
-                    return (
-                        <li key={spentBlockHeight}>
-                            <Coin coinId={parseResult.streamedCat!.coin.coinId()} /> currently unspent.
-                        </li>
-                    );
-                }
-
-                const currentAmount = parseResult.streamedCat?.coin.amount ?? BigInt(0);
-                const nextAmount = index < parsedStreams.length - 1 ? (parsedStreams[index + 1][1].streamedCat?.coin.amount ?? BigInt(0)) : BigInt(0);
-                const claimedAmount = Number(currentAmount - nextAmount) / 1000;
-                console.log({ currentAmount, nextAmount, claimedAmount });
-
-                if (parseResult.streamedCat?.info.lastPaymentTime === (parseResult.streamedCat?.info.endTime ?? BigInt(1))) {
-                    return (
-                        <li key={toHex(parseResult.streamedCat?.coin.coinId())}>
-                            All value claimed.
-                        </li>
-                    );
-                }
-
-                if(index === parsedStreams.length - 1) {
-                    return (
-                        <li key={toHex(parseResult.streamedCat!.coin.coinId())}>
-                            <Coin coinId={parseResult.streamedCat!.coin.coinId()} /> unspent.
+                            <Coin coinId={streamData.lastCoinId!} /> clawed back; last payment was {(Number(amountClaimed) / 1000).toString()} CATs.
                         </li>
                     );
                 }
 
                 return (
-                    <li key={toHex(parseResult.streamedCat?.coin.coinId() ?? fromHex("ffffff"))}>
-                        <Coin coinId={parseResult.streamedCat!.coin.coinId()} /> spent at block {spentBlockHeight} to claim {claimedAmount} CATs.
+                    <li key={toHex(parseResult.streamedCat!.coin.coinId())}>
+                        <Coin coinId={parseResult.streamedCat!.coin.coinId()} /> spent at block {spentBlockHeight} to claim {Number(amountClaimed) / 1000} CATs.
                     </li>
                 );
-            }) } </ul>
+            }) }
+            {streamData.unspentStream && (streamData.unspentStream.streamedCat?.coin.amount ?? 0 > 0) ? (
+                <li key={"last-unspent"}>
+                    <Coin coinId={streamData.unspentStream.streamedCat?.coin.coinId()!} /> currently unspent.
+                </li>
+            ) : <></>}
+            </ul>
         </div>
     );
 }
@@ -353,7 +368,11 @@ function ProgressBar({
     );
 }
 
-function Coin({ coinId }: { coinId: Uint8Array }) {
+function Coin({ coinId }: { coinId?: Uint8Array }) {
+    if(!coinId) {
+        return <span>Coin{' '}</span>;
+    }
+
     let hexId = toHex(coinId);
     let truncatedId = `${hexId.slice(0, 4)}...${hexId.slice(-4)}`;
     return (
@@ -424,7 +443,7 @@ function ClaimButton({ lastParsedStream, isClawback }: { lastParsedStream: Strea
         
         let claimTime = Math.floor(new Date().getTime() / 1000) - 120;
         if(isClawback) {
-            claimTime += 120 + 600; // 10 mins in the future
+            claimTime += 120 + 300; // 5 mins in the future
         }
         if (claimTime > lastParsedStream.streamedCat!.info.endTime) {
             claimTime = Number(lastParsedStream.streamedCat!.info.endTime);
@@ -437,31 +456,43 @@ function ClaimButton({ lastParsedStream, isClawback }: { lastParsedStream: Strea
             includedCoins.push(coinRecords[includedCoins.length].coin);
         }
         const leadCoin = includedCoins[0];
-        
+        let leadCoinId = toHex(leadCoin.coinId());
+
+        console.log('a'); // todo: debug
         let conditions: Program[] = [
             ctx.sendMessage(23, ctx.int(BigInt(claimTime)).toAtom()!, [ctx.atom(streamedCat.coin.coinId())]),
             ctx.reserveFee(neededAmount),
         ];
+        console.log('b'); // todo: debug
         if (totalAmount > neededAmount) {
+            console.log('c'); // todo: debug
             conditions.push(ctx.createCoin(leadCoin.puzzleHash, totalAmount - neededAmount, null));
+            console.log('d'); // todo: debug
         }
 
+        console.log('e'); // todo: debug
         // ctx.spendStandardCoin(leadCoin, PublicKey.fromBytes(fromHex(publicKey)), ctx.delegatedSpend(conditions));
         ctx.spendCoin(leadCoin, ctx.standardSpend(PublicKey.fromBytes(fromHex(publicKey)), ctx.delegatedSpend(conditions)));
 
+        console.log('f'); // todo: debug
         if (includedCoins.length > 1) {
+            console.log('g'); // todo: debug
             for (let i = 1; i < includedCoins.length; i++) {
+                console.log('h'); // todo: debug
                 // ctx.spendStandardCoin(includedCoins[i], PublicKey.fromBytes(fromHex(publicKey)), ctx.delegatedSpend([
                 //     ctx.assertConcurrentSpend(leadCoin.coinId())
                 // ]));
                 ctx.spendCoin(includedCoins[i], ctx.standardSpend(PublicKey.fromBytes(fromHex(publicKey)), ctx.delegatedSpend([
-                    ctx.assertConcurrentSpend(leadCoin.coinId())
+                    ctx.assertConcurrentSpend(fromHex(leadCoinId))
                 ])));
+                console.log('i'); // todo: debug
             }
         }
 
+        console.log('j'); // todo: debug
         let streamedCatCoinId = streamedCat.coin.coinId();
         ctx.spendStreamedCat(streamedCat, BigInt(claimTime), isClawback);
+        console.log('k'); // todo: debug
 
         const coinSpends = ctx.coinSpends();
 
