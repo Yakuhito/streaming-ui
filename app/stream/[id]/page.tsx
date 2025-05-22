@@ -404,9 +404,9 @@ function ClaimButton({ lastParsedStream, isClawback }: { lastParsedStream: Strea
 
     const handleClaim = async () => {
         setButtonText("Searching for public key...");
-        let address = new Address(lastParsedStream.streamedCat!.info.clawbackPh!, 'xch').encode();
-        if (!isClawback) {
-            address = new Address(lastParsedStream.streamedCat!.info.recipient!, 'xch').encode();
+        let address = new Address(lastParsedStream.streamedCat!.info.recipient!, 'xch').encode();
+        if (isClawback) {
+            address = new Address(lastParsedStream.streamedCat!.info.clawbackPh!, 'xch').encode();
         }
 
         let startIndex = 0;
