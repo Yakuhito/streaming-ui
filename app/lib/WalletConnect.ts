@@ -3,7 +3,6 @@ import { SessionTypes } from "@walletconnect/types";
 import { toast } from 'react-hot-toast';
 import { store } from '../redux/store';
 import { initialize, generateQrCode, disconnect } from '../redux/walletSlice';
-import { Coin, CoinSpend, toHex } from "chia-wallet-sdk-wasm";
 
 export class WalletConnectCoin {
   parent_coin_info: string;
@@ -14,10 +13,6 @@ export class WalletConnectCoin {
     this.parent_coin_info = parentCoinInfo;
     this.puzzle_hash = puzzleHash;
     this.amount = amount;
-  }
-
-  public static fromCoin(coin: Coin): WalletConnectCoin {
-    return new WalletConnectCoin(toHex(coin.parentCoinInfo), toHex(coin.puzzleHash), Number(coin.amount));
   }
 }
 
@@ -30,10 +25,6 @@ export class WalletConnectCoinSpend {
     this.coin = coin;
     this.puzzle_reveal = puzzleReveal;
     this.solution = solution;
-  }
-
-  public static fromCoinSpend(coinSpend: CoinSpend): WalletConnectCoinSpend {
-    return new WalletConnectCoinSpend(WalletConnectCoin.fromCoin(coinSpend.coin), toHex(coinSpend.puzzleReveal), toHex(coinSpend.solution));
   }
 }
 

@@ -1,10 +1,10 @@
 'use client';
 
 import Footer from '@/app/components/Footer';
-import { WalletConnectCoinSpend } from '@/app/lib/WalletConnect';
+import { WalletConnectCoin, WalletConnectCoinSpend } from '@/app/lib/WalletConnect';
 import walletConnect from '@/app/lib/walletConnectInstance';
 import { useAppSelector } from '@/app/redux/hooks';
-import { Address, Clvm, CoinsetClient, fromHex, Program, PublicKey, Signature, SpendBundle, standardPuzzleHash, StreamedCatParsingResult, toHex } from 'chia-wallet-sdk-wasm';
+import { Address, Clvm, CoinSpend, CoinsetClient, fromHex, Program, PublicKey, Signature, SpendBundle, standardPuzzleHash, StreamedCatParsingResult, toHex, Coin } from 'chia-wallet-sdk-wasm';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { useEffect, useState } from 'react';
@@ -13,6 +13,14 @@ interface StreamData {
   parsedStreams: [number, bigint, StreamedCatParsingResult][] | null;
   lastCoinId: Uint8Array | null;
   unspentStream: StreamedCatParsingResult | null;
+}
+
+function coinForWalletInterface(coin: Coin): WalletConnectCoin {
+return new WalletConnectCoin(toHex(coin.parentCoinInfo), toHex(coin.puzzleHash), Number(coin.amount));
+}
+
+function coinSpendForWalletInterface(coinSpend: CoinSpend): WalletConnectCoinSpend {
+  return new WalletConnectCoinSpend(coinForWalletInterface(coinSpend.coin), toHex(coinSpend.puzzleReveal), toHex(coinSpend.solution));
 }
 
 export default function StreamPage() {
@@ -272,20 +280,20 @@ function StreamInfo({ streamData }: { streamData: StreamData }) {
                 if(spentBlockHeight === 0) {
                     return (
                         <li key={spentBlockHeight}>
-                            <Coin coinId={streamData.lastCoinId!} /> clawed back; last payment was {(Number(amountClaimed) / 1000).toString()} CATs.
+                            <CoinElement coinId={streamData.lastCoinId!} /> clawed back; last payment was {(Number(amountClaimed) / 1000).toString()} CATs.
                         </li>
                     );
                 }
 
                 return (
                     <li key={toHex(parseResult.streamedCat!.coin.coinId())}>
-                        <Coin coinId={parseResult.streamedCat!.coin.coinId()} /> spent at block {spentBlockHeight} to claim {Number(amountClaimed) / 1000} CATs.
+                        <CoinElement coinId={parseResult.streamedCat!.coin.coinId()} /> spent at block {spentBlockHeight} to claim {Number(amountClaimed) / 1000} CATs.
                     </li>
                 );
             }) }
             {streamData.unspentStream && (streamData.unspentStream.streamedCat?.coin.amount ?? 0 > 0) ? (
                 <li key={"last-unspent"}>
-                    <Coin coinId={streamData.unspentStream.streamedCat?.coin.coinId()!} /> currently unspent.
+                    <CoinElement coinId={streamData.unspentStream.streamedCat?.coin.coinId()!} /> currently unspent.
                 </li>
             ) : <></>}
             </ul>
@@ -377,7 +385,7 @@ function ProgressBar({
     );
 }
 
-function Coin({ coinId }: { coinId?: Uint8Array }) {
+function CoinElement({ coinId }: { coinId?: Uint8Array }) {
     if(!coinId) {
         return <span>Coin{' '}</span>;
     }
@@ -506,7 +514,7 @@ function ClaimButton({ lastParsedStream, isClawback }: { lastParsedStream: Strea
         const coinSpends = ctx.coinSpends();
 
         setButtonText("[Wallet Prompt] Awaiting signature...");
-        const signature = await walletConnect.signCoinSpends(coinSpends.map(c => WalletConnectCoinSpend.fromCoinSpend(c)), false, true);
+        const signature = await walletConnect.signCoinSpends(coinSpends.map(c => coinSpendForWalletInterface(c)), false, true);
         console.log({ signature });
 
         setButtonText("Submitting bundle...");
