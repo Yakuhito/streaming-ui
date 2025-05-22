@@ -4,7 +4,7 @@ import Footer from '@/app/components/Footer';
 import { WalletConnectCoin, WalletConnectCoinSpend } from '@/app/lib/WalletConnect';
 import walletConnect from '@/app/lib/walletConnectInstance';
 import { useAppSelector } from '@/app/redux/hooks';
-import { Address, Clvm, CoinSpend, CoinsetClient, fromHex, Program, PublicKey, Signature, SpendBundle, standardPuzzleHash, StreamedCatParsingResult, toHex, Coin } from 'chia-wallet-sdk-wasm';
+import { Address, Clvm, CoinSpend, CoinsetClient, fromHex, Program, PublicKey, Signature, SpendBundle, standardPuzzleHash, StreamedCatParsingResult, toHex, Coin, catPuzzleHash, CatSpend, Cat, LineageProof } from 'chia-wallet-sdk-wasm';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { useEffect, useState } from 'react';
@@ -465,6 +465,9 @@ function ClaimButton({ lastParsedStream, isClawback }: { lastParsedStream: Strea
         if (claimTime > lastParsedStream.streamedCat!.info.endTime) {
             claimTime = Number(lastParsedStream.streamedCat!.info.endTime);
         }
+        if (claimTime < lastParsedStream.streamedCat!.info.lastPaymentTime) {
+            claimTime = Number(lastParsedStream.streamedCat!.info.lastPaymentTime);
+        }
 
         let includedCoins = [];
         let totalAmount = BigInt(0);
@@ -504,6 +507,34 @@ function ClaimButton({ lastParsedStream, isClawback }: { lastParsedStream: Strea
                 ])));
                 console.log('i'); // todo: debug
             }
+        }
+
+        if(isClawback) {
+            console.log('z1');
+            const claimAmount = streamedCat.info.amountToBePaid(streamedCat.coin.amount, BigInt(claimTime));
+            let userCoin = new Coin(
+                streamedCat.coin.coinId(),
+                catPuzzleHash(streamedCat.assetId, lastParsedStream.streamedCat!.info.clawbackPh!),
+                streamedCat.coin.amount - claimAmount
+            );
+            ctx.spendCatCoins([
+                new CatSpend(
+                    new Cat(
+                        userCoin,
+                        new LineageProof(
+                            streamedCat.coin.parentCoinInfo,
+                            streamedCat.info.innerPuzzleHash(),
+                            streamedCat.coin.amount
+                        ),
+                        streamedCat.assetId,
+                        lastParsedStream.streamedCat!.info.clawbackPh!
+                    ),
+                    ctx.standardSpend(PublicKey.fromBytes(fromHex(publicKey)), ctx.delegatedSpend([
+                        ctx.createCoin(userCoin.puzzleHash, userCoin.amount, null)
+                    ]))
+                )
+            ]);
+            console.log('z2');
         }
 
         console.log('j'); // todo: debug
