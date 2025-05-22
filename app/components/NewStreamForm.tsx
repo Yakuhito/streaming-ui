@@ -101,7 +101,7 @@ export default dynamic(
             setStatus('Waiting for wallet confirmation by user...');
             await walletConnect.sendAsset(formData.assetId, destAddress, Math.floor(parseFloat(formData.amount) * 1000).toString(), Math.floor(parseFloat(formData.transactionFee) * 1000000000000).toString(), memos);
           }
-          setStatus('Waiting for transaction confirmation...');
+          setStatus('Waiting for on-chain transaction confirmation...');
 
           while ((recordsResp.coinRecords?.length ?? 0) === 0) {
             await new Promise(resolve => setTimeout(resolve, 10000));
