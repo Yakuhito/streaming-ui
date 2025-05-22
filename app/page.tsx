@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import NewStreamForm from './components/NewStreamForm';
+import Footer from './components/Footer';
 
 function RecentStreams() {
   const [recentStreams, setRecentStreams] = useState<string[]>([]);
@@ -94,9 +95,7 @@ export default function Home() {
       <div className="flex justify-center w-full">
         <NewStreamForm />
       </div>
-      <div className="mt-8 text-center text-sm text-gray-500 pb-8">
-        <p>⚠️ Experimental site - use at own risk. Made with 💚 by a yak.</p>
-      </div>
+      <Footer />
     </main>
   );
 }

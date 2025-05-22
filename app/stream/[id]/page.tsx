@@ -1,5 +1,6 @@
 'use client';
 
+import Footer from '@/app/components/Footer';
 import { WalletConnectCoinSpend } from '@/app/lib/WalletConnect';
 import walletConnect from '@/app/lib/walletConnectInstance';
 import { useAppSelector } from '@/app/redux/hooks';
@@ -267,7 +268,7 @@ function StreamInfo({ streamData }: { streamData: StreamData }) {
             </div>
 
             <h2 className="text-xl font-semibold mt-8">Transactions</h2>
-            <ul className="list-disc pl-5 space-y-2 pb-8"> { streamData.parsedStreams!.map(([spentBlockHeight, amountClaimed, parseResult]) => {
+            <ul className="list-disc pl-5 space-y-2"> { streamData.parsedStreams!.map(([spentBlockHeight, amountClaimed, parseResult]) => {
                 if(spentBlockHeight === 0) {
                     return (
                         <li key={spentBlockHeight}>
@@ -288,6 +289,8 @@ function StreamInfo({ streamData }: { streamData: StreamData }) {
                 </li>
             ) : <></>}
             </ul>
+
+            <Footer />
         </div>
     );
 }
