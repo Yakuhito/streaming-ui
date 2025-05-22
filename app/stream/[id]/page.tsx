@@ -268,7 +268,7 @@ function StreamInfo({ streamData }: { streamData: StreamData }) {
                         <tr>
                             <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-500 border-r border-gray-200 w-1/4">Clawed Back</td>
                             <td className="px-6 py-4 text-sm text-gray-900 w-3/4">
-                                {clawedBack ? "Yes" : "No"} {unspentStream ? <ClaimButton lastParsedStream={unspentStream} isClawback={true} /> : ''}
+                                {clawedBack ? "Yes" : "No"} {unspentStream && firstStreamInfo?.clawbackPh ? <ClaimButton lastParsedStream={unspentStream} isClawback={true} /> : ''}
                             </td>
                         </tr>
                     </tbody>
