@@ -270,6 +270,7 @@ export default dynamic(
           </button>
           <div className='text-gray-500 text-sm text-center'>Status: {status}</div>
           <div className='text-gray-500 text-sm text-center'>Note: Write the stream details down! If the site hangs, you can fill out the form with the same information to be redirected to an existing stream (after the transaction is confirmed).</div>
+          <div className='text-gray-500 text-sm text-center'>Warning: This interface only supports the standard custody puzzle.</div>
         </form>
       );
     } 
