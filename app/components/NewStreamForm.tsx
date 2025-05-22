@@ -137,7 +137,12 @@ export default function NewStreamForm() {
   };
 
   if (!address) {
-    return <div className='text-gray-500 px-4 pb-16'>Connect your wallet to create a stream</div>;
+    return (
+      <>
+        <div className='text-gray-500 px-4 pb-16 hidden sm:block'>Connect your wallet to create a stream</div>
+        <div className='text-gray-500 px-1 pb-8 block sm:hidden text-center'>Create and interact with streams on your computer</div>
+      </>
+    );
   }
 
   return (

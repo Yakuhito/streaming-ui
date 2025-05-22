@@ -63,7 +63,7 @@ export default function Home() {
   };
 
   return (
-    <main className="flex max-w-7xl flex-col justify-center m-auto pt-8 px-8 bg-white text-black">
+    <main className="flex max-w-7xl flex-col justify-center m-auto pt-8 px-2 sm:px-8 bg-white text-black">
       <h1 className="text-xl mb-4">View Stream</h1>
       <div className="flex gap-2 w-full max-w-2xl m-auto">
         <input
@@ -77,9 +77,15 @@ export default function Home() {
         />
         <button
           onClick={handleSearch}
-          className="px-4 py-2 font-normal text-white bg-blue-500 hover:bg-blue-600 rounded-lg transition-colors"
+          className="hidden sm:block px-4 py-2 font-normal text-white bg-blue-500 hover:bg-blue-600 rounded-lg transition-colors"
         >
           View Stream
+        </button>
+        <button
+          onClick={handleSearch}
+          className="block sm:hidden px-4 py-2 font-normal text-white bg-blue-500 hover:bg-blue-600 rounded-lg transition-colors"
+        >
+          View
         </button>
       </div>
       <h1 className="text-xl mt-8 mb-4">Recent Streams</h1>

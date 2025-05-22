@@ -54,7 +54,7 @@ export default function WalletConnector() {
     <>
       { (!isInitialized || !address) ? (<button
           onClick={handleConnect}
-          className="px-4 py-2 font-normal text-white bg-blue-500 hover:bg-blue-600 rounded-lg transition-colors"
+          className="hidden sm:block px-4 py-2 font-normal text-white bg-blue-500 hover:bg-blue-600 rounded-lg transition-colors"
         >
           Connect Wallet
         </button>) : (<div className="flex items-center gap-2">
